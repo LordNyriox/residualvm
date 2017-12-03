@@ -82,39 +82,31 @@ deb:
 
 ifdef USE_DOCKTILEPLUGIN
 
-# The NsDockTilePlugIn needs to be compiled in both 32 and 64 bits irrespective of how ScummVM itself is compiled.
-# Therefore do not use $(CXXFLAGS) and $(LDFLAGS).
+ScummVMDockTilePlugin.o:
+	$(CXX) -O2 -c $(srcdir)/backends/taskbar/macosx/dockplugin/dockplugin.m -o ScummVMDockTilePlugin.o
 
-ScummVMDockTilePlugin32.o:
-	$(CXX) -mmacosx-version-min=10.6 -arch i386 -O2 -c $(srcdir)/backends/taskbar/macosx/dockplugin/dockplugin.m -o ScummVMDockTilePlugin32.o
+ScummVMDockTilePlugin: ScummVMDockTilePlugin.o
+	$(CXX) -bundle -framework Foundation -framework AppKit -fobjc-link-runtime ScummVMDockTilePlugin.o -o ScummVMDockTilePlugin
 
-ScummVMDockTilePlugin32: ScummVMDockTilePlugin32.o
-	$(CXX) -mmacosx-version-min=10.6 -arch i386 -bundle -framework Foundation -framework AppKit -fobjc-link-runtime ScummVMDockTilePlugin32.o -o ScummVMDockTilePlugin32
-
-ScummVMDockTilePlugin64.o:
-	$(CXX) -mmacosx-version-min=10.6 -arch x86_64 -O2 -c $(srcdir)/backends/taskbar/macosx/dockplugin/dockplugin.m -o ScummVMDockTilePlugin64.o
-
-ScummVMDockTilePlugin64: ScummVMDockTilePlugin64.o
-	$(CXX) -mmacosx-version-min=10.6 -arch x86_64 -bundle -framework Foundation -framework AppKit -fobjc-link-runtime ScummVMDockTilePlugin64.o -o ScummVMDockTilePlugin64
-
-ResidualVMDockTilePlugin: ScummVMDockTilePlugin32 ScummVMDockTilePlugin64
-	lipo -create ScummVMDockTilePlugin32 ScummVMDockTilePlugin64 -output ResidualVMDockTilePlugin
-
-residualvm.docktileplugin: ResidualVMDockTilePlugin
+residualvm.docktileplugin: ScummVMDockTilePlugin
 	mkdir -p residualvm.docktileplugin/Contents
 	cp $(srcdir)/dists/macosx/dockplugin/Info.plist residualvm.docktileplugin/Contents
 	mkdir -p residualvm.docktileplugin/Contents/MacOS
-	cp ResidualVMDockTilePlugin residualvm.docktileplugin/Contents/MacOS/
+	cp ScummVMDockTilePlugin residualvm.docktileplugin/Contents/MacOS/ResidualVMDockTilePlugin
 	chmod 644 residualvm.docktileplugin/Contents/MacOS/ResidualVMDockTilePlugin
 
+clean-docktileplugin:
+	rm -rf ScummVMDockTilePlugin.o ScummVMDockTilePlugin residualvm.docktileplugin/
+
+clean: clean-docktileplugin
 endif
 
 bundle_name = ResidualVM.app
+bundle: all
 ifdef USE_DOCKTILEPLUGIN
-bundle: residualvm-static residualvm.docktileplugin
-else
-bundle: residualvm-static
+bundle: residualvm.docktileplugin
 endif
+bundle:
 	mkdir -p $(bundle_name)/Contents/MacOS
 	mkdir -p $(bundle_name)/Contents/Resources
 	echo "APPL????" > $(bundle_name)/Contents/PkgInfo
@@ -149,7 +141,7 @@ endif
 ifdef USE_OPENGL_SHADERS
 	chmod 755 $(bundle_name)/Contents/Resources/shaders
 endif
-	cp residualvm-static $(bundle_name)/Contents/MacOS/residualvm
+	cp residualvm $(bundle_name)/Contents/MacOS/residualvm
 	chmod 755 $(bundle_name)/Contents/MacOS/residualvm
 	$(STRIP) $(bundle_name)/Contents/MacOS/residualvm
 ifdef USE_DOCKTILEPLUGIN
@@ -179,155 +171,21 @@ endif
 	cp $(srcdir)/dists/iphone/icon-72.png $(bundle_name)/
 	cp $(srcdir)/dists/iphone/Default.png $(bundle_name)/
 
-# Location of static libs for the iPhone
-ifneq ($(BACKEND), iphone)
-ifneq ($(BACKEND), ios7)
-# Static libaries, used for the scummvm-static and iphone targets
-OSX_STATIC_LIBS := `$(SDLCONFIG) --prefix=$(STATICLIBPATH) --static-libs`
-ifdef USE_SDL_NET
-ifdef USE_SDL2
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libSDL2_net.a
-else
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libSDL_net.a
-endif
-endif
-# With sdl2-config we don't always get the OpenGL framework
-OSX_STATIC_LIBS += -framework OpenGL
-endif
-endif
-
-ifdef USE_LIBCURL
-OSX_STATIC_LIBS += -lcurl
-endif
-
-ifdef USE_FREETYPE2
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libfreetype.a $(STATICLIBPATH)/lib/libbz2.a
-endif
-
-ifdef USE_VORBIS
-OSX_STATIC_LIBS += \
-		$(STATICLIBPATH)/lib/libvorbisfile.a \
-		$(STATICLIBPATH)/lib/libvorbis.a
-endif
-
-ifdef USE_TREMOR
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libvorbisidec.a
-endif
-
-ifdef USE_FLAC
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libFLAC.a
-endif
-
-ifdef USE_OGG
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libogg.a
-endif
-
-ifdef USE_FLUIDSYNTH
-OSX_STATIC_LIBS += \
-                -liconv -framework CoreMIDI -framework CoreAudio\
-                $(STATICLIBPATH)/lib/libfluidsynth.a \
-                $(STATICLIBPATH)/lib/libglib-2.0.a \
-                $(STATICLIBPATH)/lib/libintl.a
-
-ifneq ($(BACKEND), iphone)
-ifneq ($(BACKEND), ios7)
-OSX_STATIC_LIBS += -lreadline -framework AudioUnit
-endif
-endif
-endif
-
-ifdef USE_MAD
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libmad.a
-endif
-
-ifdef USE_PNG
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libpng.a
-endif
-
-ifdef USE_THEORADEC
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libtheoradec.a
-endif
-
-ifdef USE_FAAD
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libfaad.a
-endif
-
-ifdef USE_MPEG2
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libmpeg2.a
-endif
-
-ifdef USE_A52
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/liba52.a
-endif
-
-ifdef USE_JPEG
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libjpeg.a
-endif
-
-ifdef USE_ZLIB
-OSX_ZLIB ?= $(STATICLIBPATH)/lib/libz.a
-endif
-
 ifdef USE_SPARKLE
 ifdef MACOSX
 ifneq ($(SPARKLEPATH),)
-OSX_STATIC_LIBS += -F$(SPARKLEPATH)
+LDFLAGS += -F$(SPARKLEPATH)
 endif
-OSX_STATIC_LIBS += -framework Sparkle -Wl,-rpath,@loader_path/../Frameworks
+LDFLAGS += -framework Sparkle -Wl,-rpath,@loader_path/../Frameworks
 endif
 endif
-
-# ResidualVM specific:
-ifdef USE_ICONV
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libiconv.a
-endif
-
-# Special target to create a static linked binary for Mac OS X.
-# We use -force_cpusubtype_ALL to ensure the binary runs on every
-# PowerPC machine.
-residualvm-static: $(OBJS)
-	$(CXX) $(LDFLAGS) -force_cpusubtype_ALL -o residualvm-static $(OBJS) \
-		-framework CoreMIDI \
-		$(OSX_STATIC_LIBS) \
-		$(OSX_ZLIB)
 
 # Special target to create a static linked binary for the iPhone (legacy, and iOS 7+)
 iphone: $(OBJS)
 	$(CXX) $(LDFLAGS) -o residualvm $(OBJS) \
-		$(OSX_STATIC_LIBS) \
 		-framework UIKit -framework CoreGraphics -framework OpenGLES \
 		-framework CoreFoundation -framework QuartzCore -framework Foundation \
 		-framework AudioToolbox -framework CoreAudio -lobjc -lz
-
-# Special target to create a snapshot disk image for Mac OS X
-# TODO: Replace AUTHORS by Credits.rtf
-osxsnap: bundle
-	mkdir ResidualVM-snapshot
-	cp $(DIST_FILES_DOCS) ./ResidualVM-snapshot/
-	mv ./ResidualVM-snapshot/COPYING ./ResidualVM-snapshot/License\ \(GPL\)
-	mv ./ResidualVM-snapshot/COPYING.LGPL ./ResidualVM-snapshot/License\ \(LGPL\)
-	mv ./ResidualVM-snapshot/COPYING.FREEFONT ./ResidualVM-snapshot/License\ \(FREEFONT\)
-	mv ./ResidualVM-snapshot/COPYING.OFL ./ResidualVM-snapshot/License\ \(OFL\)
-	mv ./ResidualVM-snapshot/COPYING.BSD ./ResidualVM-snapshot/License\ \(BSD\)
-	mv ./ResidualVM-snapshot/COPYING.ISC ./ResidualVM-snapshot/License\ \(ISC\)
-	mv ./ResidualVM-snapshot/COPYING.LUA ./ResidualVM-snapshot/License\ \(Lua\)
-	mv ./ResidualVM-snapshot/COPYING.MIT ./ResidualVM-snapshot/License\ \(MIT\)
-	mv ./ResidualVM-snapshot/COPYING.TINYGL ./ResidualVM-snapshot/License\ \(TinyGL\)
-	$(XCODETOOLSPATH)/SetFile -t ttro -c ttxt ./ResidualVM-snapshot/*
-	mkdir ResidualVM-snapshot/doc
-	cp $(srcdir)/doc/QuickStart ./ResidualVM-snapshot/doc/QuickStart
-	$(XCODETOOLSPATH)/SetFile -t ttro -c ttxt ./ResidualVM-snapshot/doc/QuickStart
-	$(XCODETOOLSPATH)/CpMac -r $(bundle_name) ./ResidualVM-snapshot/
-# ResidualVM missing background file:
-#	cp $(srcdir)/dists/macosx/DS_Store ./ResidualVM-snapshot/.DS_Store
-#	cp $(srcdir)/dists/macosx/background.jpg ./ResidualVM-snapshot/background.jpg
-#	$(XCODETOOLSPATH)/SetFile -a V ./ResidualVM-snapshot/.DS_Store
-#	$(XCODETOOLSPATH)/SetFile -a V ./ResidualVM-snapshot/background.jpg
-	hdiutil create -ov -format UDZO -imagekey zlib-level=9 -fs HFS+ \
-					-srcfolder ResidualVM-snapshot \
-					-volname "ResidualVM" \
-					ResidualVM-snapshot.dmg
-	rm -rf ResidualVM-snapshot
 
 publish-appcast:
 	scp dists/macosx/residualvm_appcast.xml www.residualvm.org:/var/www/appcasts/macosx/release.xml
