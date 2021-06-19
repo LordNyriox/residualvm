@@ -53,8 +53,11 @@ Dialog::Dialog(Myst3Engine *vm, uint id):
 	_buttonCount = countDesc.miscData(0);
 	assert(_buttonCount <= 3);
 
-	// Load the movie
-	Common::SeekableReadStream *movieStream = movieDesc.createReadStream();
+	// Load the video
+	VideoLoader videoLoader;
+	Common::SeekableReadStream *movieStream = videoLoader.load(movieDesc);
+	assert(movieStream);
+
 	_bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
 	if (!_bink.loadStream(movieStream)) {
 		error("Invalid Bink video file '%s-%d'", "DLOG", id);

@@ -312,8 +312,11 @@ DragItem::DragItem(Myst3Engine *vm, uint id):
 	if (!movieDesc.isValid())
 		error("Movie %d does not exist", id);
 
-	// Load the movie
-	_movieStream = movieDesc.createReadStream();
+	// Load the video
+	VideoLoader videoLoader;
+	_movieStream = videoLoader.load(movieDesc);
+	assert(_movieStream);
+
 	_bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
 	if (!_bink.loadStream(_movieStream)) {
 		error("Invalid Bink video file '%s-%d'", "DRAG", id);

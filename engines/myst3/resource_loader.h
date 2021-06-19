@@ -106,6 +106,17 @@ private:
 	bool _loadExternalFiles;
 };
 
+class VideoLoader {
+public:
+	VideoLoader();
+
+	Common::SeekableReadStream *load(const ResourceDescription &resource);
+
+private:
+	bool _loadExternalFiles;
+};
+
+
 } // End of namespace Myst3
 
 #endif

@@ -74,10 +74,9 @@ Movie::Movie(Myst3Engine *vm, const Common::String &room, uint16 id) :
 	_resourceType = binkDesc.type();
 	loadPosition(binkDesc.videoData());
 
-	Common::SeekableReadStream *binkStream = SearchMan.createReadStreamForMember(Common::String::format("dump/%s-%d.bik", room.c_str(), id));
-	if (!binkStream) {
-		binkStream = binkDesc.createReadStream();
-	}
+	VideoLoader videoLoader;
+	Common::SeekableReadStream *binkStream = videoLoader.load(binkDesc);
+	assert(binkStream);
 
 	_bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
 	_bink.setSoundType(Audio::Mixer::kSFXSoundType);

@@ -520,4 +520,26 @@ Texture *TextureLoader::load(const ResourceDescription &resource, TextureLoader:
 	}
 }
 
+VideoLoader::VideoLoader() :
+    _loadExternalFiles(ConfMan.getBool("enable_external_assets")) {
+}
+
+Common::SeekableReadStream *VideoLoader::load(const ResourceDescription &resource) {
+	Common::SeekableReadStream *binkStream = nullptr;
+	if (_loadExternalFiles) {
+		Common::String extractedFileName = ResourceLoader::computeExtractedFileName(resource.directoryEntry(), resource.directorySubEntry());
+		debugC(kDebugModding, "Attempting to load external file '%s'", extractedFileName.c_str());
+		binkStream = SearchMan.createReadStreamForMember(extractedFileName);
+		if (binkStream) {
+			debugC(kDebugModding, "Loaded external file '%s'", extractedFileName.c_str());
+		}
+	}
+
+	if (!binkStream) {
+		binkStream = resource.createReadStream();
+	}
+
+	return binkStream;
+}
+
 } // End of namespace Myst3

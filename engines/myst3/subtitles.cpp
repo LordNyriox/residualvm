@@ -357,8 +357,11 @@ bool MovieSubtitles::loadSubtitles(const Common::String &room, int32 id) {
 
 	readPhrases(&phrases);
 
-	// Load the movie
-	Common::SeekableReadStream *movieStream = movie.createReadStream();
+	// Load the video
+	VideoLoader videoLoader;
+	Common::SeekableReadStream *movieStream = videoLoader.load(movie);
+	assert(movieStream);
+
 	_bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
 	if (!_bink.loadStream(movieStream)) {
 		error("Invalid Bink video file '%s-%d'", overriddenRoom.c_str(), id);
