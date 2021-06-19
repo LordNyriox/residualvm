@@ -31,24 +31,26 @@
 #include "engines/myst3/state.h"
 
 #include "common/file.h"
+#include "common/rational.h"
 #include "common/md5.h"
 
 namespace Myst3 {
 
 Console::Console(Myst3Engine *vm) : GUI::Debugger(), _vm(vm) {
-	registerCmd("infos",         WRAP_METHOD(Console, Cmd_Infos));
-	registerCmd("lookAt",        WRAP_METHOD(Console, Cmd_LookAt));
-	registerCmd("initScript",    WRAP_METHOD(Console, Cmd_InitScript));
-	registerCmd("var",           WRAP_METHOD(Console, Cmd_Var));
-	registerCmd("listNodes",     WRAP_METHOD(Console, Cmd_ListNodes));
-	registerCmd("run",           WRAP_METHOD(Console, Cmd_Run));
-	registerCmd("runOp",         WRAP_METHOD(Console, Cmd_RunOp));
-	registerCmd("go",            WRAP_METHOD(Console, Cmd_Go));
-	registerCmd("extract",       WRAP_METHOD(Console, Cmd_Extract));
-	registerCmd("fillInventory", WRAP_METHOD(Console, Cmd_FillInventory));
-	registerCmd("dumpArchive",   WRAP_METHOD(Console, Cmd_DumpArchive));
-	registerCmd("modArchive",    WRAP_METHOD(Console, Cmd_ModArchive));
-	registerCmd("dumpMasks",     WRAP_METHOD(Console, Cmd_DumpMasks));
+	registerCmd("infos",                WRAP_METHOD(Console, Cmd_Infos));
+	registerCmd("lookAt",               WRAP_METHOD(Console, Cmd_LookAt));
+	registerCmd("initScript",           WRAP_METHOD(Console, Cmd_InitScript));
+	registerCmd("var",                  WRAP_METHOD(Console, Cmd_Var));
+	registerCmd("listNodes",            WRAP_METHOD(Console, Cmd_ListNodes));
+	registerCmd("run",                  WRAP_METHOD(Console, Cmd_Run));
+	registerCmd("runOp",                WRAP_METHOD(Console, Cmd_RunOp));
+	registerCmd("go",                   WRAP_METHOD(Console, Cmd_Go));
+	registerCmd("extract",              WRAP_METHOD(Console, Cmd_Extract));
+	registerCmd("fillInventory",        WRAP_METHOD(Console, Cmd_FillInventory));
+	registerCmd("dumpArchive",          WRAP_METHOD(Console, Cmd_DumpArchive));
+	registerCmd("modArchive",           WRAP_METHOD(Console, Cmd_ModArchive));
+	registerCmd("dumpMasks",            WRAP_METHOD(Console, Cmd_DumpMasks));
+	registerCmd("analyseArchiveVideos", WRAP_METHOD(Console, Cmd_AnalyseArchiveVideos));
 }
 
 Console::~Console() {
@@ -554,6 +556,117 @@ bool Console::Cmd_ModArchive(int argc, const char **argv) {
 	archiveWriter.write(outFile);
 
 	debugPrintf("The mod archive '%s' has been written\n", outFileName.c_str());
+
+	return true;
+}
+
+class VideoAnalysingArchiveVisitor : public ArchiveVisitor {
+public:
+	VideoAnalysingArchiveVisitor() :
+			_archive(nullptr) {
+	}
+
+	void visitArchive(Archive &archive) override {
+		_archive = &archive;
+	}
+
+	void visitDirectorySubEntry(Archive::DirectoryEntry &directoryEntry, Archive::DirectorySubEntry &directorySubEntry) override {
+		if (directorySubEntry.type != Archive::kMovie
+		        && directorySubEntry.type != Archive::kStillMovie
+		        && directorySubEntry.type != Archive::kDialogMovie
+		        && directorySubEntry.type != Archive::kMultitrackMovie
+		        && directorySubEntry.type != Archive::kModdedMovie) {
+			return;
+		}
+
+		Common::String fileName = ResourceLoader::computeExtractedFileName(directoryEntry, directorySubEntry);
+		if (fileName.empty()) return;
+
+		debug("Analysed %s", fileName.c_str());
+
+		Common::SeekableReadStream *memoryStream = _archive->dumpToMemory(directorySubEntry.offset, directorySubEntry.size);
+		Video::BinkDecoder bink;
+		if (!bink.loadStream(memoryStream)) {
+			error("Invalid video file '%s-%d'", directoryEntry.roomName.c_str(), directoryEntry.index);
+		}
+
+		// Write hint file
+		Common::DumpFile outFileHint;
+		if (!outFileHint.open(fileName + "-hint.txt", true))
+			error("Unable to open file '%s' for writing", fileName.c_str());
+
+		const Common::Array<Video::BinkDecoder::VideoFrame> &frames = bink.getFrames();
+
+		for (uint i = 0; i < frames.size(); i++) {
+			if (frames[i].keyFrame) {
+				Common::String hint = Common::String::format("%d %d 0 0 1\n", i + 1, i + 1);
+				outFileHint.writeString(hint);
+			}
+		}
+
+		outFileHint.close();
+
+		// Write info file
+		Common::DumpFile outFileInfo;
+		if (!outFileInfo.open(fileName + "-info.txt", true))
+			error("Unable to open file '%s' for writing", fileName.c_str());
+
+		Common::Rational aspectRatio(bink.getWidth(), bink.getHeight());
+
+		bool hasIntermediateKeyFrames = false;
+		for (uint i = 0; i < frames.size(); i++) {
+			if (frames[i].keyFrame && i != 0) {
+				hasIntermediateKeyFrames = true;
+				break;
+			}
+		}
+
+		outFileInfo.writeString(Common::String::format("aspectRatio: %d/%d\n", aspectRatio.getNumerator(), aspectRatio.getDenominator()));
+		outFileInfo.writeString(Common::String::format("audioTracks: %d\n", bink.getAudioTrackCount()));
+		outFileInfo.writeString(Common::String::format("frameCount: %d\n", bink.getFrameCount()));
+		outFileInfo.writeString(Common::String::format("frameRate: %f\n", bink.getFrameRate().toDouble()));
+		outFileInfo.writeString(Common::String::format("hasAlpha: %d\n", bink.hasAlpha()));
+		outFileInfo.writeString(Common::String::format("hasIntermediateKeyFrames: %d\n", hasIntermediateKeyFrames));
+
+		outFileInfo.close();
+
+		bink.close();
+	}
+
+private:
+	Archive *_archive;
+};
+
+bool Console::Cmd_AnalyseArchiveVideos(int argc, const char **argv) {
+	if (argc != 2) {
+		debugPrintf("Analyse all the video files from a game archive\n");
+		debugPrintf("Writes a file for each video in the Bink encoder hint format, describing the keyframes\n");
+		debugPrintf("The destination folder, named 'dump', is in the location ResidualVM was launched from\n");
+		debugPrintf("Usage :\n");
+		debugPrintf("analyseArchiveVideos [file name]\n");
+		return true;
+	}
+
+	// Is the archive multi-room
+	Common::String temp = Common::String(argv[1]);
+	temp.toUppercase();
+
+	bool multiRoom = !temp.hasSuffix(".M3A");
+	if (!multiRoom) {
+		temp = Common::String(argv[1], 4);
+		temp.toUppercase();
+	}
+
+	Archive *archive = Archive::createFromFile(argv[1], multiRoom ? "" : temp);
+	if (!archive) {
+		debugPrintf("Can't open archive with name '%s'\n", argv[1]);
+		return true;
+	}
+
+	VideoAnalysingArchiveVisitor visitor;
+	archive->visit(visitor);
+
+	delete archive;
 
 	return true;
 }

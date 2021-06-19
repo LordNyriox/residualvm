@@ -58,6 +58,7 @@ private:
 	bool Cmd_ModArchive(int argc, const char **argv);
 	bool Cmd_DumpMasks(int argc, const char **argv);
 	bool Cmd_FillInventory(int argc, const char **argv);
+	bool Cmd_AnalyseArchiveVideos(int argc, const char **argv);
 };
 
 } // End of namespace Myst3
