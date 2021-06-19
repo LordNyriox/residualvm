@@ -76,6 +76,7 @@ public:
 
 	// ResidualVM-specific:
 	Common::Rational getFrameRate();
+	bool hasAlpha() const;
 protected:
 	void readNextPacket();
 	bool supportsAudioTrackSwitching() const { return true; }
@@ -134,6 +135,7 @@ private:
 		~AudioInfo();
 	};
 
+public:
 	/** A video frame. */
 	struct VideoFrame {
 		bool keyFrame;
@@ -147,6 +149,9 @@ private:
 		~VideoFrame();
 	};
 
+	const Common::Array<VideoFrame> &getFrames() const { return _frames; }
+
+private:
 	class BinkVideoTrack : public FixedRateVideoTrack {
 	public:
 		BinkVideoTrack(uint32 width, uint32 height, const Graphics::PixelFormat &format, uint32 frameCount, const Common::Rational &frameRate, bool swapPlanes, bool hasAlpha, uint32 id);
@@ -163,6 +168,7 @@ private:
 		bool seek(const Audio::Timestamp &time) { return true; }
 		bool rewind() override;
 		void setCurFrame(uint32 frame) { _curFrame = frame; }
+		bool hasAlpha() const { return _hasAlpha; }
 // End of ResidualVM-specific
 
 		/** Decode a video packet. */
