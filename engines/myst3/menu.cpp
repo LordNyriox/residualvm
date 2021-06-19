@@ -56,7 +56,10 @@ Dialog::Dialog(Myst3Engine *vm, uint id):
 	// Load the movie
 	Common::SeekableReadStream *movieStream = movieDesc.createReadStream();
 	_bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
-	_bink.loadStream(movieStream);
+	if (!_bink.loadStream(movieStream)) {
+		error("Invalid Bink video file '%s-%d'", "DLOG", id);
+	}
+
 	_bink.start();
 
 	const Graphics::Surface *frame = _bink.decodeNextFrame();

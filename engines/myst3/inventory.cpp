@@ -315,7 +315,10 @@ DragItem::DragItem(Myst3Engine *vm, uint id):
 	// Load the movie
 	_movieStream = movieDesc.createReadStream();
 	_bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
-	_bink.loadStream(_movieStream);
+	if (!_bink.loadStream(_movieStream)) {
+		error("Invalid Bink video file '%s-%d'", "DRAG", id);
+	}
+
 	_bink.start();
 
 	const Graphics::Surface *frame = _bink.decodeNextFrame();

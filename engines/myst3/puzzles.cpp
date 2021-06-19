@@ -1532,7 +1532,10 @@ void Puzzles::projectorLoadBitmap(uint16 bitmap) {
 	Common::SeekableReadStream *movieStream = movieDesc.createReadStream();
 	Video::BinkDecoder bink;
 	bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
-	bink.loadStream(movieStream);
+	if (!bink.loadStream(movieStream)) {
+		error("Invalid Bink video file '%s-%d'", "LEOS", bitmap);
+	}
+
 	bink.start();
 
 	for (uint i = 0; i < 1024; i += 256) {
@@ -1559,7 +1562,10 @@ void Puzzles::projectorAddSpotItem(uint16 bitmap, uint16 x, uint16 y) {
 	Common::SeekableReadStream *movieStream = movieDesc.createReadStream();
 	Video::BinkDecoder bink;
 	bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
-	bink.loadStream(movieStream);
+	if (!bink.loadStream(movieStream)) {
+		error("Invalid Bink video file '%s-%d'", "LEOS", bitmap);
+	}
+
 	bink.start();
 
 	const Graphics::Surface *frame = bink.decodeNextFrame();

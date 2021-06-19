@@ -474,7 +474,9 @@ public:
 
 			Common::SeekableReadStream *binkStream = _archive->dumpToMemory(directorySubEntry.offset, directorySubEntry.size);
 			Video::BinkDecoder bink;
-			bink.loadStream(binkStream);
+			if (!bink.loadStream(binkStream)) {
+				error("Invalid Bink video file '%s-%d'", directoryEntry.roomName.c_str(), directoryEntry.index);
+			}
 
 			moddedMetadata.resize(10);
 			moddedMetadata[8] = bink.getWidth();

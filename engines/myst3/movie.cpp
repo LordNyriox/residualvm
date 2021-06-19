@@ -64,10 +64,11 @@ Movie::Movie(Myst3Engine *vm, const Common::String &room, uint16 id) :
 	}
 
 	if (!binkDesc.isValid()) {
-		if (!optional)
-			error("Movie %d does not exist", id);
-		else
+		if (optional) {
 			return;
+		}
+
+		error("Movie '%s-%d' does not exist", room.c_str(), id);
 	}
 
 	_resourceType = binkDesc.type();
@@ -80,16 +81,20 @@ Movie::Movie(Myst3Engine *vm, const Common::String &room, uint16 id) :
 
 	_bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
 	_bink.setSoundType(Audio::Mixer::kSFXSoundType);
-	_bink.loadStream(binkStream);
 
-	if (binkDesc.type() == Archive::kMultitrackMovie
-			|| binkDesc.type() == Archive::kDialogMovie) {
+	if (!_bink.loadStream(binkStream)) {
+		error("Invalid Bink video file '%s-%d'", room.c_str(), id);
+	}
+
+	if (_resourceType == Archive::kMultitrackMovie
+			|| _resourceType == Archive::kDialogMovie) {
 		uint language = ConfMan.getInt("audio_language");
 		_bink.setAudioTrack(language);
 	}
 
-	if (ConfMan.getBool("subtitles"))
+	if (ConfMan.getBool("subtitles")) {
 		_subtitles = Subtitles::create(_vm, room, id);
+	}
 
 	// Clear the subtitles override anyway, so that it does not end up
 	// being used by the another movie at some point.
