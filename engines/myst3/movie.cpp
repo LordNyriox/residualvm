@@ -85,10 +85,11 @@ Movie::Movie(Myst3Engine *vm, const Common::String &room, uint16 id) :
 		error("Invalid Bink video file '%s-%d'", room.c_str(), id);
 	}
 
-	if (_resourceType == Archive::kMultitrackMovie
-			|| _resourceType == Archive::kDialogMovie) {
+	if (_bink.getAudioTrackCount() > 1) {
 		uint language = ConfMan.getInt("audio_language");
-		_bink.setAudioTrack(language);
+		if (!_bink.setAudioTrack(language)) {
+			warning("Unable to set the language audio track for Bink video '%s-%d'", room.c_str(), id);
+		}
 	}
 
 	if (ConfMan.getBool("subtitles")) {
