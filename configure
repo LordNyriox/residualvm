@@ -1739,16 +1739,22 @@ wince)
 	;;
 esac
 
-if test -z "$_host_alias"; then
-	_host_alias="$_host_cpu-$_host_os"
-else
-	# if _host_alias was set, default to the standard GNU tools
+if test -n "$_host_alias"; then
 	_ranlib=$_host_alias-ranlib
 	_strip=$_host_alias-strip
 	_ar="$_host_alias-ar cru"
 	_as="$_host_alias-as"
 	_dwp=$_host_alias-dwp
 	_windres=$_host_alias-windres
+elif test -n "$_host"; then
+	_ranlib=$_host-ranlib
+	_strip=$_host-strip
+	_ar="$_host-ar cru"
+	_as="$_host-as"
+	_dwp=$_host-dwp
+	_windres=$_host-windres
+else
+	_host_alias="$_host_cpu-$_host_os"
 fi
 
 case $_host in
