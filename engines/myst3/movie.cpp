@@ -22,6 +22,7 @@
 
 #include "engines/myst3/movie.h"
 #include "engines/myst3/ambient.h"
+#include "engines/myst3/debug.h"
 #include "engines/myst3/myst3.h"
 #include "engines/myst3/resource_loader.h"
 #include "engines/myst3/sound.h"
@@ -30,6 +31,7 @@
 
 #include "common/archive.h"
 #include "common/config-manager.h"
+#include "common/debug.h"
 
 #include "graphics/colormasks.h"
 
@@ -42,7 +44,7 @@ Movie::Movie(Myst3Engine *vm, const Common::String &room, uint16 id) :
 		_posV(0),
 		_posWidth(0),
 		_posHeight(0),
-		_startFrame(0),
+		_startFrame(1),
 		_endFrame(0),
 		_texture(0),
 		_is3d(false),
@@ -70,6 +72,8 @@ Movie::Movie(Myst3Engine *vm, const Common::String &room, uint16 id) :
 
 		error("Movie '%s-%d' does not exist", room.c_str(), id);
 	}
+
+	debugC(kDebugVideo, "Initializing video '%s-%d'", room.c_str(), id);
 
 	_resourceType = binkDesc.type();
 	loadPosition(binkDesc.videoData());
@@ -318,10 +322,11 @@ void ScriptedMovie::update() {
 
 		if (newEnabled) {
 			if (_disableWhenComplete
-					|| _bink.getCurFrame() < _startFrame
+					|| _bink.getCurFrame() < (_startFrame - 1)
 					|| _bink.getCurFrame() >= _endFrame
 					|| _bink.endOfVideo()) {
-				_bink.seekToFrame(_startFrame);
+				debugC(kDebugVideo, "Starting newly enabled video %d at frame %d", _id, _startFrame);
+				_bink.seekToFrame(_startFrame - 1);
 				_isLastFrame = false;
 			}
 
@@ -349,6 +354,8 @@ void ScriptedMovie::update() {
 				if (_bink.getCurFrame() != nextFrame - 1) {
 					// Don't seek if we just want to display the next frame
 					if (_bink.getCurFrame() + 1 != nextFrame - 1) {
+						debugC(kDebugVideo, "Seeking video %d to frame %d", _id, nextFrame);
+
 						_bink.seekToFrame(nextFrame - 1);
 					}
 					drawNextFrameToTexture();
@@ -366,7 +373,9 @@ void ScriptedMovie::update() {
 				_isLastFrame = false;
 
 				if (_loop) {
-					_bink.seekToFrame(_startFrame);
+					debugC(kDebugVideo, "Looping video %d to frame %d", _id, _startFrame);
+
+					_bink.seekToFrame(_startFrame - 1);
 					drawNextFrameToTexture();
 				} else {
 					complete = true;
@@ -426,7 +435,7 @@ void SimpleMovie::play() {
 	_bink.setEndFrame(_endFrame - 1);
 	_bink.setVolume(_volume * Audio::Mixer::kMaxChannelVolume / 100);
 
-	if (_bink.getCurFrame() < _startFrame - 1) {
+	if (_bink.getCurFrame() < (_startFrame - 1)) {
 		_bink.seekToFrame(_startFrame - 1);
 	}
 

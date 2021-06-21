@@ -33,7 +33,8 @@ enum {
 	kDebugSaveLoad = (1 << 1),
 	kDebugNode     = (1 << 2),
 	kDebugScript   = (1 << 3),
-	kDebugModding  = (1 << 4)
+	kDebugModding  = (1 << 4),
+	kDebugVideo    = (1 << 5)
 };
 
 } // end of namespace Myst3

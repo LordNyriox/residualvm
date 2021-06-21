@@ -99,6 +99,7 @@ Myst3Engine::Myst3Engine(OSystem *syst, const Myst3GameDescription *version) :
 	DebugMan.addDebugChannel(kDebugScript,   "Script",   "Track Script Execution");
 	DebugMan.addDebugChannel(kDebugNode,     "Node",     "Track Node Changes");
 	DebugMan.addDebugChannel(kDebugModding,  "Modding",  "Debug the loading of modded assets");
+	DebugMan.addDebugChannel(kDebugVideo,    "Video",    "Debug video playback");
 
 	// Add subdirectories to the search path to allow running from a full HDD install
 	const Common::FSNode gameDataDir(ConfMan.get("path"));
