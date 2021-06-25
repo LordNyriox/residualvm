@@ -75,6 +75,7 @@ Cursor::Cursor(Myst3Engine *vm) :
 
 	// Set default cursor
 	changeCursor(8);
+	g_system->warpMouse(_position.x, _position.y);
 }
 
 void Cursor::loadAvailableCursors() {
