@@ -911,8 +911,8 @@ void Puzzles::pinball(int16 var) {
 		if (rightSideFrame < 500)
 			rightSideFrame += 300;
 
-		int32 crashedLeftFrame = ((((leftSideFrame + 25) / 50) >> 4) & 1) != 0 ? 550 : 500;
-		int32 crashedRightFrame = ((((rightSideFrame + 25) / 50) >> 4) & 1) != 0 ? 550 : 500;
+		int32 crashedLeftFrame  = (((leftSideFrame  + 25) / 50) & 1) != 0 ? 550 : 500;
+		int32 crashedRightFrame = (((rightSideFrame + 25) / 50) & 1) != 0 ? 550 : 500;
 
 		while (1) {
 			bool moviePlaying = false;
@@ -974,7 +974,7 @@ void Puzzles::pinball(int16 var) {
 
 			if (!moviePlaying) {
 				_vm->_state->setVar(26, jumpType);
-				_vm->_state->setVar(93, 1);
+				_vm->_state->setWaterEffectRunning(true);
 				_vm->_sound->stopEffect(1025, 7);
 				return;
 			}
