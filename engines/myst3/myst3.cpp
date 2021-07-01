@@ -39,7 +39,6 @@
 #include "engines/myst3/database.h"
 #include "engines/myst3/debug.h"
 #include "engines/myst3/effects.h"
-#include "engines/myst3/gfx_tinygl.h"
 #include "engines/myst3/myst3.h"
 #include "engines/myst3/resource_loader.h"
 #include "engines/myst3/node.h"
@@ -75,6 +74,8 @@
 #endif
 
 #include "math/vector2d.h"
+
+#include "engines/myst3/gfx_tinygl.h"
 
 namespace Myst3 {
 

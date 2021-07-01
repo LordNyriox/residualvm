@@ -1058,7 +1058,6 @@ const Feature s_features[] = {
 	{"fluidsynth",  "USE_FLUIDSYNTH", "libfluidsynth",    false, "FluidSynth support" }, // ResidualVM change
 	{   "libcurl",     "USE_LIBCURL", "libcurl",          false, "libcurl support" },
 	{    "sdlnet",     "USE_SDL_NET", "SDL_net",          false, "SDL_net support" },
-	{      "glew",        "USE_GLEW", "GLEW",             true,  "GLEW support" }, // ResidualVM specific
 
 	// Feature flags
 	{            "bink",                      "USE_BINK",  "", true,  "Bink video support" },

@@ -32,6 +32,7 @@ MODULE_OBJS := \
 	pixelbuffer.o \
 	opengl/context.o \
 	opengl/framebuffer.o \
+	opengl/functions.o \
 	opengl/texture.o \
 	opengl/tiledsurface.o \
 	opengl/shader.o \

@@ -34,6 +34,7 @@
 
 #include "graphics/surface.h"
 #include "graphics/pixelbuffer.h"
+#include "graphics/opengl/functions.h"
 
 #include "math/glmath.h"
 
@@ -50,21 +51,6 @@
 #include "engines/grim/set.h"
 #include "engines/grim/emi/modelemi.h"
 #include "engines/grim/registry.h"
-
-
-#if defined (SDL_BACKEND) && defined(GL_ARB_fragment_program) && !defined(USE_GLEW)
-
-// We need SDL.h for SDL_GL_GetProcAddress.
-#include "backends/platform/sdl/sdl-sys.h"
-
-// Extension functions needed for fragment programs.
-PFNGLGENPROGRAMSARBPROC glGenProgramsARB;
-PFNGLBINDPROGRAMARBPROC glBindProgramARB;
-PFNGLPROGRAMSTRINGARBPROC glProgramStringARB;
-PFNGLDELETEPROGRAMSARBPROC glDeleteProgramsARB;
-PFNGLPROGRAMLOCALPARAMETER4FARBPROC glProgramLocalParameter4fARB;
-
-#endif
 
 namespace Grim {
 
@@ -170,27 +156,6 @@ void GfxOpenGL::initExtensions() {
 		return;
 	}
 
-#if defined (SDL_BACKEND) && defined(GL_ARB_fragment_program)
-#ifndef USE_GLEW
-	union {
-		void *obj_ptr;
-		void (APIENTRY *func_ptr)();
-	} u;
-	// We're casting from an object pointer to a function pointer, the
-	// sizes need to be the same for this to work.
-	assert(sizeof(u.obj_ptr) == sizeof(u.func_ptr));
-	u.obj_ptr = SDL_GL_GetProcAddress("glGenProgramsARB");
-	glGenProgramsARB = (PFNGLGENPROGRAMSARBPROC)u.func_ptr;
-	u.obj_ptr = SDL_GL_GetProcAddress("glBindProgramARB");
-	glBindProgramARB = (PFNGLBINDPROGRAMARBPROC)u.func_ptr;
-	u.obj_ptr = SDL_GL_GetProcAddress("glProgramStringARB");
-	glProgramStringARB = (PFNGLPROGRAMSTRINGARBPROC)u.func_ptr;
-	u.obj_ptr = SDL_GL_GetProcAddress("glDeleteProgramsARB");
-	glDeleteProgramsARB = (PFNGLDELETEPROGRAMSARBPROC)u.func_ptr;
-	u.obj_ptr = SDL_GL_GetProcAddress("glProgramLocalParameter4fARB");
-	glProgramLocalParameter4fARB = (PFNGLPROGRAMLOCALPARAMETER4FARBPROC)u.func_ptr;
-#endif
-
 	const char *extensions = (const char *)glGetString(GL_EXTENSIONS);
 	if (extensions && strstr(extensions, "ARB_fragment_program")) {
 		_useDepthShader = true;
@@ -220,7 +185,6 @@ void GfxOpenGL::initExtensions() {
 			_useDimShader = false;
 		}
 	}
-#endif
 }
 
 const char *GfxOpenGL::getVideoDeviceName() {

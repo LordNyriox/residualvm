@@ -27,6 +27,7 @@
 #include "engines/myst3/gfx_opengl_texture.h"
 
 #include "graphics/opengl/context.h"
+#include "graphics/opengl/functions.h"
 
 namespace Myst3 {
 

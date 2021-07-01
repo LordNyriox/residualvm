@@ -46,17 +46,30 @@
 #define GL_UNPACK_ROW_LENGTH 0x0CF2
 #endif
 
-#elif defined(USE_GLEW)
-#include <GL/glew.h>
-#elif defined(SDL_BACKEND) && defined(USE_OPENGL)
+#else // USE_GLES2
+
+// The OpenGL headers define directly all the functions in core up to version 1.3,
+// however on Windows the OpenGL ABI specifies only functions up to version 1.1 can
+// be linked with. So we also need to query function pointers for the functions we use
+// from versions 1.2 and 1.3.
+// Hide the OpenGL definitions that would conflict with our own function pointer definitions.
+#define glActiveTexture        glActiveTexture_hidden
+#define glCompressedTexImage2D glCompressedTexImage2D_hidden
+
+#if defined(SDL_BACKEND) && defined(USE_OPENGL)
 #include <SDL_opengl.h>
 #elif defined(USE_OPENGL)
 #include <GL/gl.h>
 #endif
 
-#endif
+#undef glActiveTexture
+#undef glCompressedTexImage2D
+
+#endif // USE_GLES2
 
 #if !defined(GL_MAX_SAMPLES)
 // The Android SDK and SDL1 don't declare GL_MAX_SAMPLES
 #define GL_MAX_SAMPLES 0x8D57
 #endif
+
+#endif // GRAPHICS_OPENGL_SYSTEM_HEADERS_H

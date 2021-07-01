@@ -278,11 +278,6 @@ endif
 endif
 
 # ResidualVM specific:
-ifdef USE_GLEW
-OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libglew.a
-endif
-
-# ResidualVM specific:
 ifdef USE_ICONV
 OSX_STATIC_LIBS += $(STATICLIBPATH)/lib/libiconv.a
 endif
