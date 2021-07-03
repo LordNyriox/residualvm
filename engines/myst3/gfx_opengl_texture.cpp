@@ -114,7 +114,11 @@ void OpenGLTexture::create(uint w, uint h, const Graphics::PixelFormat &f) {
 	} else if (format.bytesPerPixel == 1) {
 		assert(format == Graphics::PixelFormat::createFormatCLUT8());
 
+#ifndef USE_GLES2
 		internalFormat = GL_RED;
+#else
+		internalFormat = GL_LUMINANCE;
+#endif
 		sourceFormat = GL_UNSIGNED_BYTE;
 	} else {
 		error("Unknown pixel format");
