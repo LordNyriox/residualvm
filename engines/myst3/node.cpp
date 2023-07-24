@@ -42,11 +42,19 @@ void Node::addEffect(Effect *effect) {
 	}
 }
 
-Node::~Node() {
+void Node::addSpotItem(const SpotItem &spotItem) {
+	_spotItems.push_back(spotItem);
+}
+
+void Node::clearEffects() {
 	for (uint i = 0; i < _effects.size(); i++) {
 		delete _effects[i];
 	}
 	_effects.clear();
+}
+
+Node::~Node() {
+	clearEffects();
 }
 
 void NodeRenderer::updateSpotItemTexture(uint16 spotItemId, Texture *texture, const FloatRect &textureRect) {

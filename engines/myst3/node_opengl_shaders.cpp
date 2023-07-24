@@ -95,13 +95,10 @@ NodeShaderRenderer::~NodeShaderRenderer() {
 		delete _spotItemTextures[i].texture;
 	}
 
-	for (EffectMaskTextureMap::iterator it = _effectMaskTextures.begin(); it != _effectMaskTextures.end(); ++it) {
-		delete it->_value;
-	}
+	resetEffects();
 
 	delete _effectsCubeShader;
 	delete _effectsFrameShader;
-	delete _shieldEffectPattern;
 }
 
 void NodeShaderRenderer::drawSpotItemTexture(SpotItemTexture &spotItemTexture, float transparency) {
@@ -261,6 +258,8 @@ void NodeShaderRenderer::clearSpotItemBitmap(uint16 spotItemId) {
 }
 
 void NodeShaderRenderer::initEffects() {
+	resetEffects();
+
 	const EffectArray &effects = _node.effects();
 	for (uint i = 0; i < effects.size(); i++) {
 		Effect *effect = effects[i];
@@ -281,6 +280,16 @@ void NodeShaderRenderer::initEffects() {
 			_shieldEffectPattern = new OpenGLTexture(shieldEffect->pattern());
 		}
 	}
+}
+
+void NodeShaderRenderer::resetEffects() {
+	for (EffectMaskTextureMap::iterator it = _effectMaskTextures.begin(); it != _effectMaskTextures.end(); ++it) {
+		delete it->_value;
+	}
+	_effectMaskTextures.clear();
+
+	delete _shieldEffectPattern;
+	_shieldEffectPattern = nullptr;
 }
 
 void NodeShaderRenderer::update() {

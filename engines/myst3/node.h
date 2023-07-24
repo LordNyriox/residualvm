@@ -95,6 +95,8 @@ public:
 	void addEffect(Effect *effect);
 	void addSpotItem(const SpotItem &spotItem);
 
+	void clearEffects();
+
 private:
 	Common::String _room;
 	uint16 _id;

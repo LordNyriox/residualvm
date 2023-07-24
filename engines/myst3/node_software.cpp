@@ -433,10 +433,6 @@ void NodeSoftwareRenderer::drawCube() {
 	_gfx.drawCube(textures);
 }
 
-void Node::addSpotItem(const SpotItem &spotItem) {
-	_spotItems.push_back(spotItem);
-}
-
 SpotItem::SpotItem(uint16 id, int16 condition, bool enableFade, uint16 fadeVariable) :
 		_id(id),
 		_condition(condition),

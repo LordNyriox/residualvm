@@ -989,6 +989,7 @@ void Myst3Engine::loadNode(uint16 nodeID, uint32 roomID, uint32 ageID) {
 	// The node init script does not clear the magnet effect state.
 	// Here we ignore effects on menu nodes so we don't try to
 	// to load the magnet effect when opening the main menu on Amateria.
+	_node->clearEffects();
 	if (_state->getViewType() != kMenu) {
 		_node->addEffect(WaterEffect ::create(this, newRoomName, _node->id()));
 		_node->addEffect(MagnetEffect::create(this, newRoomName, _node->id()));

@@ -110,6 +110,7 @@ private:
 	void drawCube();
 
 	void setupEffectsShader(OpenGL::Shader &shader, uint faceId, const EffectArray &effects);
+	void resetEffects();
 
 	void drawSpotItemTexture(SpotItemTexture &spotItemTexture, float transparency);
 
