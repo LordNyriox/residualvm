@@ -1220,7 +1220,7 @@ void Puzzles::journalAtrus(uint16 node, uint16 var) {
 	_vm->_state->setVar(var, numPages - 1);
 }
 
-void Puzzles::symbolCodesInit(uint16 var, uint16 posX, uint16 posY) {
+void Puzzles::symbolCodesInit(uint16 var, int16 posX, int16 posY) {
 	struct Point {
 		uint16 x;
 		uint16 y;
