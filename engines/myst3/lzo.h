@@ -20,24 +20,33 @@
  *
  */
 
-#ifndef NODEFRAME_H_
-#define NODEFRAME_H_
+#ifndef MYST3_LZO_H
+#define MYST3_LZO_H
 
-#include "engines/myst3/node.h"
+#include "common/scummsys.h"
 
 namespace Myst3 {
 
-class NodeFrame : public Node {
-public:
-	NodeFrame(Myst3Engine *vm, uint16 id);
-	virtual ~NodeFrame();
-
-	void draw() override;
-
-protected:
-	virtual bool isFaceVisible(uint faceId) override { return true; }
+enum LzoResult {
+	kLzoLookbehindOverrun = -4,
+	kLzoOutputOverrun = -3,
+	kLzoInputOverrun = -2,
+	kLzoError = -1,
+	kLzoSuccess = 0,
+	kLzoInputNotConsumed = 1
 };
 
-} // End of namespace Myst3
+LzoResult lzoDecompress(const uint8 *src, size_t srcSize,
+                        uint8 *dst, size_t dstSize,
+                        size_t &outSize);
+LzoResult lzoCompress(const uint8 *src, size_t srcSize,
+                      uint8 *dst, size_t dstSize,
+                      size_t &outSize);
 
-#endif // NODEFRAME_H_
+inline size_t lzoCompressWorstSize(size_t s) {
+	return s + s / 16 + 64 + 3;
+}
+
+} // namespace Myst3
+
+#endif

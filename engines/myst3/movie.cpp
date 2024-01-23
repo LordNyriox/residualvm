@@ -22,42 +22,41 @@
 
 #include "engines/myst3/movie.h"
 #include "engines/myst3/ambient.h"
+#include "engines/myst3/debug.h"
 #include "engines/myst3/myst3.h"
+#include "engines/myst3/resource_loader.h"
 #include "engines/myst3/sound.h"
 #include "engines/myst3/state.h"
 #include "engines/myst3/subtitles.h"
 
+#include "common/archive.h"
 #include "common/config-manager.h"
+#include "common/debug.h"
 
 #include "graphics/colormasks.h"
 
 namespace Myst3 {
 
-Movie::Movie(Myst3Engine *vm, uint16 id) :
+Movie::Movie(Myst3Engine *vm, const Common::String &room, uint16 id) :
 		_vm(vm),
 		_id(id),
 		_posU(0),
 		_posV(0),
-		_startFrame(0),
+		_posWidth(0),
+		_posHeight(0),
+		_startFrame(1),
 		_endFrame(0),
 		_texture(0),
+		_is3d(false),
 		_force2d(false),
 		_forceOpaque(false),
+		_resourceType(Archive::kMovie),
 		_subtitles(0),
 		_volume(0),
 		_additiveBlending(false),
 		_transparency(100) {
 
-	const DirectorySubEntry *binkDesc = _vm->getFileDescription("", id, 0, DirectorySubEntry::kMultitrackMovie);
-
-	if (!binkDesc)
-		binkDesc = _vm->getFileDescription("", id, 0, DirectorySubEntry::kDialogMovie);
-
-	if (!binkDesc)
-		binkDesc = _vm->getFileDescription("", id, 0, DirectorySubEntry::kStillMovie);
-
-	if (!binkDesc)
-		binkDesc = _vm->getFileDescription("", id, 0, DirectorySubEntry::kMovie);
+	ResourceDescription binkDesc = _vm->_resourceLoader->getMovie(room, id);
 
 	// Check whether the video is optional
 	bool optional = false;
@@ -66,38 +65,50 @@ Movie::Movie(Myst3Engine *vm, uint16 id) :
 		_vm->_state->setMovieOptional(0);
 	}
 
-	if (!binkDesc) {
-		if (!optional)
-			error("Movie %d does not exist", id);
-		else
+	if (!binkDesc.isValid()) {
+		if (optional) {
 			return;
+		}
+
+		error("Movie '%s-%d' does not exist", room.c_str(), id);
 	}
 
-	loadPosition(binkDesc->getVideoData());
+	debugC(kDebugVideo, "Initializing video '%s-%d'", room.c_str(), id);
 
-	Common::MemoryReadStream *binkStream = binkDesc->getData();
+	_resourceType = binkDesc.type();
+	loadPosition(binkDesc.videoData());
+
+	VideoLoader videoLoader;
+	Common::SeekableReadStream *binkStream = videoLoader.load(binkDesc);
+	assert(binkStream);
+
 	_bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
 	_bink.setSoundType(Audio::Mixer::kSFXSoundType);
-	_bink.loadStream(binkStream);
 
-	if (binkDesc->getType() == DirectorySubEntry::kMultitrackMovie
-			|| binkDesc->getType() == DirectorySubEntry::kDialogMovie) {
-		uint language = ConfMan.getInt("audio_language");
-		_bink.setAudioTrack(language);
+	if (!_bink.loadStream(binkStream)) {
+		error("Invalid Bink video file '%s-%d'", room.c_str(), id);
 	}
 
-	if (ConfMan.getBool("subtitles"))
-		_subtitles = Subtitles::create(_vm, id);
+	if (_bink.getAudioTrackCount() > 1) {
+		uint language = ConfMan.getInt("audio_language");
+		if (!_bink.setAudioTrack(language)) {
+			warning("Unable to set the language audio track for Bink video '%s-%d'", room.c_str(), id);
+		}
+	}
+
+	if (ConfMan.getBool("subtitles")) {
+		_subtitles = Subtitles::create(_vm, room, id);
+	}
 
 	// Clear the subtitles override anyway, so that it does not end up
 	// being used by the another movie at some point.
 	_vm->_state->setMovieOverrideSubtitles(0);
 }
 
-void Movie::loadPosition(const VideoData &videoData) {
+void Movie::loadPosition(const ResourceDescription::VideoData &videoData) {
 	static const float scale = 50.0f;
 
-	_is3D = _vm->_state->getViewType() == kCube;
+	_is3d = _vm->_state->getViewType() == kCube;
 
 	Math::Vector3d planeDirection = videoData.v1;
 	planeDirection.normalize();
@@ -126,31 +137,51 @@ void Movie::loadPosition(const VideoData &videoData) {
 	_pBottomRight = planeOrigin + vBottom + vRight;
 	_pTopRight = planeOrigin + vTop + vRight;
 
-	_posU = videoData.u;
-	_posV = videoData.v;
+	_posU      = videoData.u;
+	_posV      = videoData.v;
+	_posWidth  = videoData.width;
+	_posHeight = videoData.height;
 }
 
 void Movie::draw2d() {
-	Common::Rect screenRect = Common::Rect(_bink.getWidth(), _bink.getHeight());
-	screenRect.translate(_posU, _posV);
+	FloatRect sceneViewport;
+	if (_vm->_state->getViewType() == kMenu) {
+		sceneViewport = _vm->_layout->menuViewport();
+	} else {
+		sceneViewport = _vm->_layout->frameViewport();
+	}
+	_vm->_gfx->setViewport(sceneViewport, false);
 
-	Common::Rect textureRect = Common::Rect(_bink.getWidth(), _bink.getHeight());
+	uint sceneHeight = _vm->_state->getViewType() == kMenu ? Renderer::kOriginalHeight : Renderer::kFrameHeight;
+
+	// Upscaling ratio
+	float scaleRatio;
+	if (_resourceType == Archive::kModdedMovie) {
+		scaleRatio = _bink.getWidth() / (float)_posWidth;
+	} else {
+		scaleRatio = 1.f;
+	}
+
+	FloatRect screenRect = FloatSize(_bink.getWidth(), _bink.getHeight())
+	        .scale(1 / scaleRatio)
+	        .translate(FloatPoint(_posU, _posV))
+	        .normalize(FloatSize(Renderer::kOriginalWidth, sceneHeight));
 
 	if (_forceOpaque)
-		_vm->_gfx->drawTexturedRect2D(screenRect, textureRect, _texture);
+		_vm->_gfx->drawTexturedRect2D(screenRect, FloatRect::unit(), *_texture);
 	else
-		_vm->_gfx->drawTexturedRect2D(screenRect, textureRect, _texture, (float) _transparency / 100, _additiveBlending);
+		_vm->_gfx->drawTexturedRect2D(screenRect, FloatRect::unit(), *_texture, (float) _transparency / 100, _additiveBlending);
 }
 
 void Movie::draw3d() {
-	_vm->_gfx->drawTexturedRect3D(_pTopLeft, _pBottomLeft, _pTopRight, _pBottomRight, _texture);
+	_vm->_gfx->drawTexturedRect3D(_pTopLeft, _pBottomLeft, _pTopRight, _pBottomRight, *_texture);
 }
 
 void Movie::draw() {
 	if (_force2d)
 		return;
 
-	if (_is3D) {
+	if (_is3d) {
 		draw3d();
 	} else {
 		draw2d();
@@ -163,7 +194,7 @@ void Movie::drawOverlay() {
 
 	if (_subtitles) {
 		_subtitles->setFrame(adjustFrameForRate(_bink.getCurFrame(), false));
-		_vm->_gfx->renderWindowOverlay(_subtitles);
+		_subtitles->drawOverlay();
 	}
 }
 
@@ -172,9 +203,9 @@ void Movie::drawNextFrameToTexture() {
 
 	if (frame) {
 		if (_texture)
-			_texture->update(frame);
+			_texture->update(*frame);
 		else
-			_texture = _vm->_gfx->createTexture(frame);
+			_texture = _vm->_gfx->createTexture(*frame);
 	}
 }
 
@@ -206,21 +237,19 @@ void Movie::pause(bool p) {
 }
 
 Movie::~Movie() {
-	if (_texture)
-		_vm->_gfx->freeTexture(_texture);
-
+	delete _texture;
 	delete _subtitles;
 }
 
 void Movie::setForce2d(bool b) {
 	_force2d = b;
 	if (_force2d) {
-		_is3D = false;
+		_is3d = false;
 	}
 }
 
-ScriptedMovie::ScriptedMovie(Myst3Engine *vm, uint16 id) :
-		Movie(vm, id),
+ScriptedMovie::ScriptedMovie(Myst3Engine *vm, const Common::String &room, uint16 id) :
+		Movie(vm, room, id),
 		_condition(0),
 		_conditionBit(0),
 		_startFrameVar(0),
@@ -293,10 +322,11 @@ void ScriptedMovie::update() {
 
 		if (newEnabled) {
 			if (_disableWhenComplete
-					|| _bink.getCurFrame() < _startFrame
+					|| _bink.getCurFrame() < (_startFrame - 1)
 					|| _bink.getCurFrame() >= _endFrame
 					|| _bink.endOfVideo()) {
-				_bink.seekToFrame(_startFrame);
+				debugC(kDebugVideo, "Starting newly enabled video %d at frame %d", _id, _startFrame);
+				_bink.seekToFrame(_startFrame - 1);
 				_isLastFrame = false;
 			}
 
@@ -324,6 +354,8 @@ void ScriptedMovie::update() {
 				if (_bink.getCurFrame() != nextFrame - 1) {
 					// Don't seek if we just want to display the next frame
 					if (_bink.getCurFrame() + 1 != nextFrame - 1) {
+						debugC(kDebugVideo, "Seeking video %d to frame %d", _id, nextFrame);
+
 						_bink.seekToFrame(nextFrame - 1);
 					}
 					drawNextFrameToTexture();
@@ -341,7 +373,9 @@ void ScriptedMovie::update() {
 				_isLastFrame = false;
 
 				if (_loop) {
-					_bink.seekToFrame(_startFrame);
+					debugC(kDebugVideo, "Looping video %d to frame %d", _id, _startFrame);
+
+					_bink.seekToFrame(_startFrame - 1);
 					drawNextFrameToTexture();
 				} else {
 					complete = true;
@@ -387,8 +421,8 @@ void ScriptedMovie::updateVolume() {
 ScriptedMovie::~ScriptedMovie() {
 }
 
-SimpleMovie::SimpleMovie(Myst3Engine *vm, uint16 id) :
-		Movie(vm, id),
+SimpleMovie::SimpleMovie(Myst3Engine *vm, const Common::String &room, uint16 id) :
+		Movie(vm, room, id),
 		_synchronized(false) {
 	_startFrame = 1;
 	_endFrame = _bink.getFrameCount();
@@ -401,7 +435,7 @@ void SimpleMovie::play() {
 	_bink.setEndFrame(_endFrame - 1);
 	_bink.setVolume(_volume * Audio::Mixer::kMaxChannelVolume / 100);
 
-	if (_bink.getCurFrame() < _startFrame - 1) {
+	if (_bink.getCurFrame() < (_startFrame - 1)) {
 		_bink.seekToFrame(_startFrame - 1);
 	}
 
@@ -472,8 +506,8 @@ void SimpleMovie::refreshAmbientSounds() {
 SimpleMovie::~SimpleMovie() {
 }
 
-ProjectorMovie::ProjectorMovie(Myst3Engine *vm, uint16 id, Graphics::Surface *background) :
-		ScriptedMovie(vm, id),
+ProjectorMovie::ProjectorMovie(Myst3Engine *vm, const Common::String &room, uint16 id, Graphics::Surface *background) :
+		ScriptedMovie(vm, room, id),
 		_background(background),
 	_frame(0) {
 	_enabled = true;
@@ -561,9 +595,9 @@ void ProjectorMovie::update() {
 	}
 
 	if (_texture)
-		_texture->update(_frame);
+		_texture->update(*_frame);
 	else
-		_texture = _vm->_gfx->createTexture(_frame);
+		_texture = _vm->_gfx->createTexture(*_frame);
 }
 
 } // End of namespace Myst3

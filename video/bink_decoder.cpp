@@ -363,6 +363,12 @@ Common::Rational BinkDecoder::getFrameRate() {
 	return videoTrack->getFrameRate();
 }
 
+bool BinkDecoder::hasAlpha() const {
+	const BinkVideoTrack *videoTrack = (const BinkVideoTrack *)getTrack(0);
+
+	return videoTrack->hasAlpha();
+}
+
 // ResidualVM-specific function
 bool BinkDecoder::seekIntern(const Audio::Timestamp &time) {
 	BinkVideoTrack *videoTrack = (BinkVideoTrack *)getTrack(0);

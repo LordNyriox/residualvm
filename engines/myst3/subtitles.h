@@ -30,19 +30,15 @@
 namespace Myst3 {
 
 class Myst3Engine;
-class DirectorySubEntry;
+class ResourceDescription;
 
-class Subtitles : public Window {
+class Subtitles {
 public:
-	static Subtitles *create(Myst3Engine *vm, uint32 id);
+	static Subtitles *create(Myst3Engine *vm, const Common::String &room, uint32 id);
 	virtual ~Subtitles();
 
-	// Window API
-	Common::Rect getPosition() const override;
-	Common::Rect getOriginalPosition() const override;
-
 	void setFrame(int32 frame);
-	void drawOverlay() override;
+	void drawOverlay();
 
 protected:
 	struct Phrase {
@@ -55,12 +51,12 @@ protected:
 
 	void loadFontSettings(int32 id);
 	virtual void loadResources() = 0;
-	virtual bool loadSubtitles(int32 id) = 0;
+	virtual bool loadSubtitles(const Common::String &room, int32 id) = 0;
 	virtual void drawToTexture(const Phrase *phrase) = 0;
 	void freeTexture();
 
-	int32 checkOverridenId(int32 id);
-	const DirectorySubEntry *loadText(int32 id, bool overriden);
+	int32 checkOverriddenId(int32 id);
+	ResourceDescription loadText(const Common::String &room, int32 id);
 
 	Myst3Engine *_vm;
 

@@ -351,6 +351,7 @@ void OSystem_SDL::detectAntiAliasingSupport() {
 }
 
 #endif // USE_OPENGL
+
 // End of ResidualVM specific code
 
 void OSystem_SDL::engineInit() {

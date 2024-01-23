@@ -24,6 +24,7 @@
 #include "engines/myst3/effects.h"
 #include "engines/myst3/gfx.h"
 #include "engines/myst3/myst3.h"
+#include "engines/myst3/resource_loader.h"
 #include "engines/myst3/state.h"
 #include "engines/myst3/sound.h"
 
@@ -55,25 +56,28 @@ Common::Rect Effect::FaceMask::getBlockRect(uint x, uint y) {
 	return rect;
 }
 
-Effect::Effect(Myst3Engine *vm) :
-		_vm(vm) {
+Effect::Effect(Myst3Engine *vm, EffectType effectType) :
+		_vm(vm),
+		_type(effectType) {
 }
 
 Effect::~Effect() {
-	for (FaceMaskMap::iterator it = _facesMasks.begin(); it != _facesMasks.end(); it++) {
-		delete it->_value;
+	for (uint i = 0; i < _facesMasks.size(); i++) {
+		delete _facesMasks[i];
 	}
 }
 
-bool Effect::loadMasks(const Common::String &room, uint32 id, DirectorySubEntry::ResourceType type) {
+bool Effect::loadMasks(const Common::String &room, uint32 id, Archive::ResourceType type) {
 	bool isFrame = _vm->_state->getViewType() == kFrame;
 
 	// Load the mask of each face
-	for (uint i = 0; i < 6; i++) {
-		const DirectorySubEntry *desc = _vm->getFileDescription(room, id, i + 1, type);
+	bool loadedMasks = false;
+	_facesMasks.resize(isFrame ? 1 : 6);
+	for (uint i = 0; i < _facesMasks.size(); i++) {
+		ResourceDescription desc = _vm->_resourceLoader->getFileDescription(room, id, i + 1, type);
 
-		if (desc) {
-			Common::SeekableReadStream *data = desc->getData();
+		if (desc.isValid()) {
+			Common::SeekableReadStream *data = desc.createReadStream();
 
 			// Check if we are overriding an existing mask
 			delete _facesMasks[i];
@@ -81,17 +85,16 @@ bool Effect::loadMasks(const Common::String &room, uint32 id, DirectorySubEntry:
 
 			// Frame masks are vertically flipped for some reason
 			if (isFrame) {
-				_vm->_gfx->flipVertical(_facesMasks[i]->surface);
+				Renderer::flipVertical(_facesMasks[i]->surface);
 			}
 
 			delete data;
+
+			loadedMasks = true;
 		}
 	}
 
-	if (_facesMasks.empty())
-		return false;
-
-	return true;
+	return loadedMasks;
 }
 
 Effect::FaceMask *Effect::loadMask(Common::SeekableReadStream *maskStream) {
@@ -137,7 +140,7 @@ Effect::FaceMask *Effect::loadMask(Common::SeekableReadStream *maskStream) {
 }
 
 Common::Rect Effect::getUpdateRectForFace(uint face) {
-	FaceMask *mask = _facesMasks.getVal(face);
+	FaceMask *mask = _facesMasks[face];
 	if (!mask)
 		error("No mask for face %d", face);
 
@@ -160,18 +163,24 @@ Common::Rect Effect::getUpdateRectForFace(uint face) {
 }
 
 WaterEffect::WaterEffect(Myst3Engine *vm) :
-		Effect(vm),
+		Effect(vm, kEffectWater),
 		_lastUpdate(0),
 		_step(0) {
+	_vm->_state->setWaterEffectActive(true);
 }
 
 WaterEffect::~WaterEffect() {
+	_vm->_state->setWaterEffectActive(false);
 }
 
-WaterEffect *WaterEffect::create(Myst3Engine *vm, uint32 id) {
+WaterEffect *WaterEffect::create(Myst3Engine *vm, const Common::String &room, uint32 id) {
+	if (!vm->_state->getWaterEffects()) {
+		return nullptr;
+	}
+
 	WaterEffect *s = new WaterEffect(vm);
 
-	if (!s->loadMasks("", id, DirectorySubEntry::kWaterEffectMask)) {
+	if (!s->loadMasks(room, id, Archive::kWaterEffectMask)) {
 		delete s;
 		return 0;
 	}
@@ -256,7 +265,7 @@ void WaterEffect::applyForFace(uint face, Graphics::Surface *src, Graphics::Surf
 		return;
 	}
 
-	FaceMask *mask = _facesMasks.getVal(face);
+	FaceMask *mask = _facesMasks[face];
 
 	if (!mask)
 		error("No mask for face %d", face);
@@ -335,19 +344,20 @@ void WaterEffect::apply(Graphics::Surface *src, Graphics::Surface *dst, Graphics
 }
 
 LavaEffect::LavaEffect(Myst3Engine *vm) :
-		Effect(vm),
+		Effect(vm, kEffectLava),
 		_lastUpdate(0),
 		_step(0) {
+	_vm->_state->setLavaEffectActive(true);
 }
 
 LavaEffect::~LavaEffect() {
-
+	_vm->_state->setLavaEffectActive(false);
 }
 
-LavaEffect *LavaEffect::create(Myst3Engine *vm, uint32 id) {
+LavaEffect *LavaEffect::create(Myst3Engine *vm, const Common::String &room, uint32 id) {
 	LavaEffect *s = new LavaEffect(vm);
 
-	if (!s->loadMasks("", id, DirectorySubEntry::kLavaEffectMask)) {
+	if (!s->loadMasks(room, id, Archive::kLavaEffectMask)) {
 		delete s;
 		return 0;
 	}
@@ -365,7 +375,7 @@ bool LavaEffect::update() {
 
 		_step += _vm->_state->getLavaEffectStepSize();
 
-		doStep(_step, _vm->_state->getLavaEffectAmpl() / 10);
+		doStep(_step, _vm->_state->getLavaEffectAmpl() / 10.f);
 
 		if (_step > 256)
 			_step -= 256;
@@ -387,7 +397,7 @@ void LavaEffect::applyForFace(uint face, Graphics::Surface *src, Graphics::Surfa
 		return;
 	}
 
-	FaceMask *mask = _facesMasks.getVal(face);
+	FaceMask *mask = _facesMasks[face];
 
 	if (!mask)
 		error("No mask for face %d", face);
@@ -400,7 +410,7 @@ void LavaEffect::applyForFace(uint face, Graphics::Surface *src, Graphics::Surfa
 			uint8 maskValue = *maskPtr;
 
 			if (maskValue != 0) {
-				int32 xOffset= _displacement[(maskValue + y) % 256];
+				int32 xOffset = _displacement[(maskValue + y) % 256];
 				int32 yOffset = _displacement[maskValue % 256];
 				int32 maxOffset = (maskValue >> 6) & 0x3;
 
@@ -428,25 +438,27 @@ void LavaEffect::applyForFace(uint face, Graphics::Surface *src, Graphics::Surfa
 }
 
 MagnetEffect::MagnetEffect(Myst3Engine *vm) :
-		Effect(vm),
+		Effect(vm, kEffectMagnet),
 		_lastSoundId(0),
 		_lastTime(0),
 		_position(0),
 		_lastAmpl(0),
 		_shakeStrength(nullptr) {
+	_vm->_state->setMagnetEffectActive(true);
 }
 
 MagnetEffect::~MagnetEffect() {
 	delete _shakeStrength;
+	_vm->_state->setMagnetEffectActive(false);
 }
 
-MagnetEffect *MagnetEffect::create(Myst3Engine *vm, uint32 id) {
+MagnetEffect *MagnetEffect::create(Myst3Engine *vm, const Common::String &room, uint32 id) {
 	if (!vm->_state->getMagnetEffectSound()) {
 		return nullptr;
 	}
 
 	MagnetEffect *s = new MagnetEffect(vm);
-	s->loadMasks("", id, DirectorySubEntry::kMagneticEffectMask);
+	s->loadMasks(room, id, Archive::kMagneticEffectMask);
 	return s;
 }
 
@@ -467,12 +479,12 @@ bool MagnetEffect::update() {
 		// The sound changed since last update
 		_lastSoundId = soundId;
 
-		const DirectorySubEntry *desc = _vm->getFileDescription("", _vm->_state->getMagnetEffectNode(), 0, DirectorySubEntry::kRawData);
-		if (!desc)
+		ResourceDescription desc = _vm->_resourceLoader->getFileDescription("MASS", _vm->_state->getMagnetEffectNode(), 0, Archive::kRawData);
+		if (!desc.isValid())
 			error("Magnet effect support file %d does not exist", _vm->_state->getMagnetEffectNode());
 
 		delete _shakeStrength;
-		_shakeStrength = desc->getData();
+		_shakeStrength = desc.createReadStream();
 	}
 
 	int32 soundPosition = _vm->_sound->playedFrames(soundId);
@@ -512,7 +524,7 @@ bool MagnetEffect::update() {
 }
 
 void MagnetEffect::applyForFace(uint face, Graphics::Surface *src, Graphics::Surface *dst) {
-	FaceMask *mask = _facesMasks.getVal(face);
+	FaceMask *mask = _facesMasks[face];
 
 	if (!mask)
 		error("No mask for face %d", face);
@@ -549,7 +561,7 @@ void MagnetEffect::apply(Graphics::Surface *src, Graphics::Surface *dst, Graphic
 }
 
 ShakeEffect::ShakeEffect(Myst3Engine *vm) :
-		Effect(vm),
+		Effect(vm, kEffectShake),
 		_lastTick(0),
 		_magnetEffectShakeStep(0),
 		_pitchOffset(0),
@@ -621,7 +633,7 @@ void ShakeEffect::applyForFace(uint face, Graphics::Surface* src, Graphics::Surf
 }
 
 RotationEffect::RotationEffect(Myst3Engine *vm) :
-		Effect(vm),
+		Effect(vm, kEffectRotation),
 		_lastUpdate(0),
 		_headingOffset(0) {
 }
@@ -656,34 +668,41 @@ bool RotationEffect::update() {
 void RotationEffect::applyForFace(uint face, Graphics::Surface* src, Graphics::Surface* dst) {
 }
 
-bool ShieldEffect::loadPattern() {
+
+Graphics::Surface ShieldEffect::loadPattern(Myst3Engine &vm) {
 	// Read the shield effect support data
-	const DirectorySubEntry *desc = _vm->getFileDescription("NARA", 10000, 0, DirectorySubEntry::kRawData);
-	if (!desc) {
-		return false;
+	ResourceDescription desc = vm._resourceLoader->getFileDescription("NARA", 10000, 0, Archive::kRawData);
+
+	if (!desc.isValid()) {
+		return Graphics::Surface();
 	}
 
-	Common::MemoryReadStream *stream = desc->getData();
+	Common::SeekableReadStream *stream = desc.createReadStream();
 	if (stream->size() != 4096) {
 		error("Incorrect shield effect support file size %d", stream->size());
 	}
 
-	stream->read(_pattern, 4096);
+	Graphics::Surface pattern;
+	pattern.create(64, 64, Graphics::PixelFormat::createFormatCLUT8());
 
+	stream->read(pattern.getPixels(), 4096);
 	delete stream;
 
-	return true;
+	return pattern;
 }
 
-ShieldEffect::ShieldEffect(Myst3Engine *vm):
-	Effect(vm),
+ShieldEffect::ShieldEffect(Myst3Engine *vm, Graphics::Surface &pattern):
+	Effect(vm, kEffectShield),
 	_lastTick(0),
 	_amplitude(1.0),
-	_amplitudeIncrement(1.0 / 64.0) {
+	_amplitudeIncrement(1.0 / 64.0),
+	_pattern(pattern) {
+	_vm->_state->setShieldEffectActive(true);
 }
 
 ShieldEffect::~ShieldEffect() {
-
+	_vm->_state->setShieldEffectActive(false);
+	_pattern.free();
 }
 
 ShieldEffect *ShieldEffect::create(Myst3Engine *vm, uint32 id) {
@@ -694,12 +713,12 @@ ShieldEffect *ShieldEffect::create(Myst3Engine *vm, uint32 id) {
 	if (room != kRoomNarayan || node >= 100)
 		return nullptr;
 
-	ShieldEffect *s = new ShieldEffect(vm);
-
-	if (!s->loadPattern()) {
-		delete s;
+	Graphics::Surface pattern = loadPattern(*vm);
+	if (!pattern.getPixels()) {
 		return nullptr; // We don't have the effect file
 	}
+
+	ShieldEffect *s = new ShieldEffect(vm, pattern);
 
 	bool outerShieldUp = vm->_state->getOuterShieldUp();
 	bool innerShieldUp = vm->_state->getInnerShieldUp();
@@ -713,18 +732,18 @@ ShieldEffect *ShieldEffect::create(Myst3Engine *vm, uint32 id) {
 	}
 
 	if (outerShieldUp) {
-		hasMasks |= s->loadMasks("NARA", node + 300, DirectorySubEntry::kShieldEffectMask);
+		hasMasks |= s->loadMasks("NARA", node + 300, Archive::kShieldEffectMask);
 		if (saavedroStatus == 2) {
 			innerShieldMaskNode = node + 200;
 		}
 	}
 
 	if (innerShieldMaskNode) {
-		hasMasks |= s->loadMasks("NARA", innerShieldMaskNode, DirectorySubEntry::kShieldEffectMask);
+		hasMasks |= s->loadMasks("NARA", innerShieldMaskNode, Archive::kShieldEffectMask);
 	}
 
 	if (innerShieldMaskNode && innerShieldUp && node > 6) {
-		hasMasks |= s->loadMasks("NARA", node + 100, DirectorySubEntry::kShieldEffectMask);
+		hasMasks |= s->loadMasks("NARA", node + 100, Archive::kShieldEffectMask);
 	}
 
 	if (!hasMasks) {
@@ -752,9 +771,10 @@ bool ShieldEffect::update() {
 		_amplitudeIncrement = 1.0 / 64.0;
 	}
 
-	// Update the support data
-	for (uint i = 0; i < ARRAYSIZE(_pattern); i++) {
-		_pattern[i] += 2; // Intentional overflow
+	// Update the pattern
+	byte *patternPixels = (byte *) _pattern.getPixels();
+	for (uint i = 0; i < _pattern.w * _pattern.h; i++) {
+		*patternPixels += 2; // Intentional overflow
 	}
 
 	// Update the displacement offsets
@@ -770,7 +790,7 @@ void ShieldEffect::applyForFace(uint face, Graphics::Surface *src, Graphics::Sur
 		return;
 	}
 
-	FaceMask *mask = _facesMasks.getVal(face);
+	FaceMask *mask = _facesMasks[face];
 
 	if (!mask)
 		error("No mask for face %d", face);
@@ -783,7 +803,8 @@ void ShieldEffect::applyForFace(uint face, Graphics::Surface *src, Graphics::Sur
 			uint8 maskValue = *maskPtr;
 
 			if (maskValue != 0) {
-				int32 yOffset = _displacement[_pattern[(y % 64) * 64 + (x % 64)]];
+				const byte *patternPixel = (const byte *) _pattern.getBasePtr(x % 64, y % 64);
+				int32 yOffset = _displacement[*patternPixel];
 
 				if (yOffset > maskValue) {
 					yOffset = maskValue;

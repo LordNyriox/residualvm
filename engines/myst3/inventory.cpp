@@ -24,6 +24,7 @@
 
 #include "engines/myst3/cursor.h"
 #include "engines/myst3/database.h"
+#include "engines/myst3/resource_loader.h"
 #include "engines/myst3/scene.h"
 #include "engines/myst3/state.h"
 
@@ -41,39 +42,40 @@ const Inventory::ItemData Inventory::_availableItems[8] = {
 };
 
 Inventory::Inventory(Myst3Engine *vm) :
-		Window(),
 		_vm(vm),
-		_texture(0) {
-	_scaled = !_vm->isWideScreenModEnabled();
-	initializeTexture();
+		_texture(nullptr) {
+
+	ResourceDescription desc = _vm->_resourceLoader->getRawData("GLOB", 1204);
+	if (!desc.isValid())
+		error("The inventory texture, GLOB-1204 was not found");
+
+	TextureLoader textureLoader(*_vm->_gfx);
+	_texture = textureLoader.load(desc, TextureLoader::kImageFormatTEX);
 }
 
 Inventory::~Inventory() {
-	_vm->_gfx->freeTexture(_texture);
-}
-
-void Inventory::initializeTexture() {
-	Graphics::Surface *s = _vm->loadTexture(1204);
-
-	_texture = _vm->_gfx->createTexture(s);
-
-	s->free();
-	delete s;
+	delete _texture;
 }
 
 bool Inventory::isMouseInside() {
-	Common::Point mouse = _vm->_cursor->getPosition(false);
-	return getPosition().contains(mouse);
+	Common::Point mouse = _vm->_cursor->getPosition();
+	FloatRect bottomBorder = _vm->_layout->bottomBorderViewport();
+	return bottomBorder.contains(FloatPoint(mouse.x, mouse.y));
 }
 
 void Inventory::draw() {
+	FloatRect screenViewport = _vm->_layout->unconstrainedViewport();
+	_vm->_gfx->setViewport(screenViewport, false);
+
 	if (_vm->isWideScreenModEnabled()) {
 		// Draw a black background to cover the main game frame
-		Common::Rect screen = _vm->_gfx->viewport();
-		_vm->_gfx->drawRect2D(Common::Rect(screen.width(), Renderer::kBottomBorderHeight), 0xFF000000);
+		FloatRect bottomBorder = _vm->_layout->bottomBorderViewport()
+		        .normalize(screenViewport.size());
+		_vm->_gfx->drawRect2D(bottomBorder, 0xFF000000);
 	}
 
 	uint16 hoveredItemVar = hoveredItem();
+	float textureScale = _texture->width / 256.f;
 
 	for (ItemList::const_iterator it = _inventory.begin(); it != _inventory.end(); it++) {
 		int32 state = _vm->_state->getVar(it->var);
@@ -84,16 +86,18 @@ void Inventory::draw() {
 
 		const ItemData &item = getData(it->var);
 
-		Common::Rect textureRect = Common::Rect(item.textureWidth,
-				item.textureHeight);
-		textureRect.translate(item.textureX, 0);
-
 		bool itemHighlighted = it->var == hoveredItemVar || state == 2;
 
-		if (itemHighlighted)
-			textureRect.translate(0, _texture->height / 2);
+		FloatRect textureRect = FloatSize(item.textureWidth, item.textureHeight)
+		        .translate(FloatPoint(item.textureX, .0f))
+		        .scale(textureScale)
+		        .translate(FloatPoint(.0f, itemHighlighted ? _texture->height / 2.f : .0f))
+		        .normalize(_texture->size());
 
-		_vm->_gfx->drawTexturedRect2D(it->rect, textureRect, _texture);
+		FloatRect itemRect = it->rect
+		        .normalize(screenViewport.size());
+
+		_vm->_gfx->drawTexturedRect2D(itemRect, textureRect, *_texture);
 	}
 }
 
@@ -160,48 +164,47 @@ const Inventory::ItemData &Inventory::getData(uint16 var) {
 }
 
 void Inventory::reflow() {
+	float scale = _vm->_layout->scale();
+
 	uint16 itemCount = 0;
 	uint16 totalWidth = 0;
 
 	for (uint i = 0; _availableItems[i].var; i++) {
 		if (hasItem(_availableItems[i].var)) {
-			totalWidth += _availableItems[i].textureWidth;
+			totalWidth += _availableItems[i].textureWidth * scale;
 			itemCount++;
 		}
 	}
 
 	if (itemCount >= 2)
-		totalWidth += 9 * (itemCount - 1);
+		totalWidth += 9 * scale * (itemCount - 1);
 
-	uint16 left;
-	if (_vm->isWideScreenModEnabled()) {
-		Common::Rect screen = _vm->_gfx->viewport();
-		left = (screen.width() - totalWidth) / 2;
-	} else {
-		left = (Renderer::kOriginalWidth - totalWidth) / 2;
-	}
+	FloatRect bottomBorder = _vm->_layout->bottomBorderViewport();
+	uint left = (bottomBorder.width() - totalWidth) / 2;
 
 	for (ItemList::iterator it = _inventory.begin(); it != _inventory.end(); it++) {
 		const ItemData &item = getData(it->var);
 
-		uint16 top = (Renderer::kBottomBorderHeight - item.textureHeight) / 2;
+		FloatSize itemSize = FloatSize(item.textureWidth, item.textureHeight)
+		        .scale(scale);
 
-		it->rect = Common::Rect(item.textureWidth, item.textureHeight);
-		it->rect.translate(left, top);
+		uint16 top = (bottomBorder.height() - itemSize.height()) / 2;
 
-		left += item.textureWidth;
+		it->rect = itemSize
+		        .translate(FloatPoint(bottomBorder.left() + left, bottomBorder.top() + top));
+
+		left += itemSize.width();
 
 		if (itemCount >= 2)
-			left += 9;
+			left += 9 * scale;
 	}
 }
 
 uint16 Inventory::hoveredItem() {
-	Common::Point mouse = _vm->_cursor->getPosition(false);
-	mouse = scalePoint(mouse);
+	Common::Point mouse = _vm->_cursor->getPosition();
 
 	for (ItemList::const_iterator it = _inventory.begin(); it != _inventory.end(); it++) {
-		if(it->rect.contains(mouse))
+		if(it->rect.contains(FloatPoint(mouse.x, mouse.y)))
 			return it->var;
 	}
 
@@ -291,31 +294,6 @@ void Inventory::updateState() {
 	_vm->_state->updateInventory(items);
 }
 
-Common::Rect Inventory::getPosition() const {
-	Common::Rect screen = _vm->_gfx->viewport();
-
-	Common::Rect frame;
-	if (_vm->isWideScreenModEnabled()) {
-		frame = Common::Rect(screen.width(), Renderer::kBottomBorderHeight);
-
-		Common::Rect scenePosition = _vm->_scene->getPosition();
-		int16 top = CLIP<int16>(screen.height() - frame.height(), 0, scenePosition.bottom);
-
-		frame.translate(0, top);
-	} else {
-		frame = Common::Rect(screen.width(), screen.height() * Renderer::kBottomBorderHeight / Renderer::kOriginalHeight);
-		frame.translate(screen.left, screen.top + screen.height() * (Renderer::kTopBorderHeight + Renderer::kFrameHeight) / Renderer::kOriginalHeight);
-	}
-
-	return frame;
-}
-
-Common::Rect Inventory::getOriginalPosition() const {
-	Common::Rect originalPosition = Common::Rect(Renderer::kOriginalWidth, Renderer::kBottomBorderHeight);
-	originalPosition.translate(0, Renderer::kTopBorderHeight + Renderer::kFrameHeight);
-	return originalPosition;
-}
-
 void Inventory::updateCursor() {
 	uint16 item = hoveredItem();
 	if (item > 0) {
@@ -327,34 +305,49 @@ void Inventory::updateCursor() {
 
 DragItem::DragItem(Myst3Engine *vm, uint id):
 		_vm(vm),
-		_texture(0),
-		_frame(1) {
-	// Draw on the whole screen
-	_isConstrainedToWindow = false;
-	_scaled = !_vm->isWideScreenModEnabled();
+		_frame(1),
+		_texture(nullptr) {
+	ResourceDescription movieDesc = _vm->_resourceLoader->getStillMovie("DRAG", id);
 
-	const DirectorySubEntry *movieDesc = _vm->getFileDescription("DRAG", id, 0, DirectorySubEntry::kStillMovie);
-
-	if (!movieDesc)
+	if (!movieDesc.isValid())
 		error("Movie %d does not exist", id);
 
-	// Load the movie
-	_movieStream = movieDesc->getData();
+	// Load the video
+	VideoLoader videoLoader;
+	_movieStream = videoLoader.load(movieDesc);
+	assert(_movieStream);
+
 	_bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
-	_bink.loadStream(_movieStream);
+	if (!_bink.loadStream(_movieStream)) {
+		error("Invalid Bink video file '%s-%d'", "DRAG", id);
+	}
+
 	_bink.start();
 
 	const Graphics::Surface *frame = _bink.decodeNextFrame();
-	_texture = _vm->_gfx->createTexture(frame);
+	_texture = _vm->_gfx->createTexture(*frame);
+
+	if (movieDesc.type() == Archive::kModdedMovie) {
+		// For modded resources, the screen size is that from the original file
+		 ResourceDescription::VideoData videoData = movieDesc.videoData();
+		_screenSize = FloatSize(videoData.width, videoData.height);
+	} else {
+		_screenSize = _texture->size();
+	}
 }
 
 DragItem::~DragItem() {
-	_vm->_gfx->freeTexture(_texture);
+	delete _texture;
 }
 
 void DragItem::drawOverlay() {
-	Common::Rect textureRect = Common::Rect(_texture->width, _texture->height);
-	_vm->_gfx->drawTexturedRect2D(getPosition(), textureRect, _texture, 0.99f);
+	FloatRect viewport = _vm->_layout->unconstrainedViewport();
+
+	FloatRect itemRect = getPosition()
+	        .normalize(viewport.size());
+
+	_vm->_gfx->setViewport(viewport, false);
+	_vm->_gfx->drawTexturedRect2D(itemRect, FloatRect::unit(), *_texture, 0.99f);
 }
 
 void DragItem::setFrame(uint16 frame) {
@@ -362,26 +355,24 @@ void DragItem::setFrame(uint16 frame) {
 		_frame = frame;
 		_bink.seekToFrame(frame - 1);
 		const Graphics::Surface *s = _bink.decodeNextFrame();
-		_texture->update(s);
+		_texture->update(*s);
 	}
 }
 
-Common::Rect DragItem::getPosition() {
-	Common::Rect viewport;
-	Common::Point mouse;
+FloatRect DragItem::getPosition() {
+	Common::Point mouse = _vm->_cursor->getPosition();
+	FloatRect viewport = _vm->_layout->screenViewport();
+	float scale = _vm->_layout->scale();
 
-	if (_scaled) {
-		viewport = Common::Rect(Renderer::kOriginalWidth, Renderer::kOriginalHeight);
-		mouse = _vm->_cursor->getPosition(true);
-	} else {
-		viewport = _vm->_gfx->viewport();
-		mouse = _vm->_cursor->getPosition(false);
-	}
+	FloatSize itemSize = _screenSize
+	        .scale(scale);
 
-	uint posX = CLIP<uint>(mouse.x, _texture->width / 2, viewport.width() - _texture->width / 2);
-	uint posY = CLIP<uint>(mouse.y, _texture->height / 2, viewport.height() - _texture->height / 2);
+	FloatPoint itemCenter = FloatPoint(
+	            CLIP<float>(mouse.x, viewport.left() + itemSize.width()  / 2, viewport.right()  - itemSize.width()  / 2),
+	            CLIP<float>(mouse.y, viewport.top()  + itemSize.height() / 2, viewport.bottom() - itemSize.height() / 2)
+	);
 
-	Common::Rect screenRect = Common::Rect::center(posX, posY, _texture->width, _texture->height);
+	FloatRect screenRect = FloatRect::center(itemCenter, itemSize);
 	return screenRect;
 }
 

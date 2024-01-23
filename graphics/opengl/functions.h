@@ -1,7 +1,7 @@
 /* ResidualVM - A 3D game interpreter
  *
  * ResidualVM is the legal property of its developers, whose names
- * are too numerous to list here. Please refer to the AUTHORS
+ * are too numerous to list here. Please refer to the COPYRIGHT
  * file distributed with this source distribution.
  *
  * This program is free software; you can redistribute it and/or
@@ -11,7 +11,7 @@
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
@@ -20,24 +20,22 @@
  *
  */
 
-#ifndef NODECUBE_H_
-#define NODECUBE_H_
+#ifndef GRAPHICS_OPENGL_FUNCTIONS_H
+#define GRAPHICS_OPENGL_FUNCTIONS_H
 
-#include "engines/myst3/node.h"
+#include "graphics/opengl/system_headers.h"
 
-namespace Myst3 {
+#ifndef USE_GLES2
 
-class NodeCube: public Node {
-public:
-	NodeCube(Myst3Engine *vm, uint16 id);
-	virtual ~NodeCube();
+// Declare all the functions in functions-list.h
 
-	void draw() override;
+#define GL_FUNC(name, type) \
+	extern type name;
 
-protected:
-	virtual bool isFaceVisible(uint faceId) override;
-};
+#include "graphics/opengl/functions-list.h"
 
-} // End of namespace Myst3
+#undef GL_FUNC
 
-#endif // NODECUBE_H_
+#endif // USE_GLES2
+
+#endif // GRAPHICS_OPENGL_FUNCTIONS_H

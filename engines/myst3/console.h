@@ -43,7 +43,7 @@ private:
 	Myst3Engine *_vm;
 
 	void describeScript(const Common::Array<Opcode> &script);
-	bool dumpFaceMask(uint16 index, int face, DirectorySubEntry::ResourceType type);
+	bool dumpFaceMask(const Common::String &room, uint16 index, int face, Archive::ResourceType type);
 
 	bool Cmd_Infos(int argc, const char **argv);
 	bool Cmd_LookAt(int argc, const char **argv);
@@ -55,8 +55,10 @@ private:
 	bool Cmd_Go(int argc, const char **argv);
 	bool Cmd_Extract(int argc, const char **argv);
 	bool Cmd_DumpArchive(int argc, const char **argv);
+	bool Cmd_ModArchive(int argc, const char **argv);
 	bool Cmd_DumpMasks(int argc, const char **argv);
 	bool Cmd_FillInventory(int argc, const char **argv);
+	bool Cmd_AnalyseArchiveVideos(int argc, const char **argv);
 };
 
 } // End of namespace Myst3

@@ -20,37 +20,23 @@
  *
  */
 
-#ifndef MYST3_DIRECTORYENTRY_H
-#define MYST3_DIRECTORYENTRY_H
+#ifndef MYST3_DEBUG_H
+#define MYST3_DEBUG_H
 
-#include "engines/myst3/directorysubentry.h"
-#include "common/stream.h"
-#include "common/array.h"
+#include "common/scummsys.h"
 
 namespace Myst3 {
 
-class DirectoryEntry {
-private:
-	char _roomName[5];
-	uint32 _index;
-	Common::Array<DirectorySubEntry> _subentries;
-
-	Archive *_archive;
-
-public:
-	DirectoryEntry() {}
-	DirectoryEntry(Archive *archive);
-
-	void readFromStream(Common::SeekableReadStream &inStream, const char *room);
-	void dumpToFiles(Common::SeekableReadStream &inStream);
-
-	DirectorySubEntry *getItemDescription(uint16 face, DirectorySubEntry::ResourceType type);
-	DirectorySubEntryList listItemsMatching(uint16 face, DirectorySubEntry::ResourceType type);
-
-	uint32 getIndex() { return _index; }
-	const char *getRoom() { return _roomName; }
+// Engine Debug Flags
+enum {
+	kDebugVariable = (1 << 0),
+	kDebugSaveLoad = (1 << 1),
+	kDebugNode     = (1 << 2),
+	kDebugScript   = (1 << 3),
+	kDebugModding  = (1 << 4),
+	kDebugVideo    = (1 << 5)
 };
 
-} // End of namespace Myst3
+} // end of namespace Myst3
 
-#endif // MYST3_DIRECTORYENTRY_H
+#endif

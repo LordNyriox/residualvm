@@ -76,7 +76,7 @@ private:
 	void projectorAddSpotItem(uint16 bitmap, uint16 x, uint16 y);
 	void projectorUpdateCoordinates();
 
-	void symbolCodesInit(uint16 var, uint16 posX, uint16 posY);
+	void symbolCodesInit(uint16 var, int16 posX, int16 posY);
 	void symbolCodesClick(int16 var);
 	bool _symbolCodesCheckSolution(uint16 var, const SymbolCodeSolution &solution);
 	int32 _symbolCodesFound();

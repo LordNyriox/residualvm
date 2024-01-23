@@ -25,6 +25,7 @@
 #include "engines/myst3/ambient.h"
 #include "engines/myst3/cursor.h"
 #include "engines/myst3/database.h"
+#include "engines/myst3/debug.h"
 #include "engines/myst3/hotspot.h"
 #include "engines/myst3/inventory.h"
 #include "engines/myst3/myst3.h"
@@ -67,7 +68,7 @@ Script::Script(Myst3Engine *vm):
 	OP( 22, movieInitCondPreload,                     "ec"    );
 	OP( 23, movieInitFrameVar,                        "ev"    );
 	OP( 24, movieInitFrameVarPreload,                 "ev"    );
-	OP( 25, movieInitOverrridePosition,               "ecii"  );
+	OP( 25, movieInitOverridePosition,                "ecii"  );
 	OP( 26, movieInitScriptedPosition,                "evv"   );
 	OP( 27, movieRemove,                              "e"     );
 	OP( 28, movieRemoveAll,                           ""      );
@@ -598,7 +599,7 @@ void Script::movieInitFrameVarPreload(Context &c, const Opcode &cmd) {
 	_vm->loadMovie(movieid, condition, false, true);
 }
 
-void Script::movieInitOverrridePosition(Context &c, const Opcode &cmd) {
+void Script::movieInitOverridePosition(Context &c, const Opcode &cmd) {
 	debugC(kDebugScript, "Opcode %d: Preload movie %d with condition %d and position U %d V %d",
 			cmd.op, cmd.args[0], cmd.args[1], cmd.args[2], cmd.args[3]);
 
@@ -1670,7 +1671,7 @@ void Script::ifMouseIsInRect(Context &c, const Opcode &cmd) {
 	Common::Rect r = Common::Rect(cmd.args[2], cmd.args[3]);
 	r.translate(cmd.args[0], cmd.args[1]);
 
-	Common::Point mouse = _vm->_cursor->getPosition(false);
+	Common::Point mouse = _vm->_cursor->getPosition();
 	mouse = _vm->_scene->scalePoint(mouse);
 
 	if (r.contains(mouse))
@@ -1707,7 +1708,7 @@ void Script::leverDrag(Context &c, const Opcode &cmd) {
 
 			ratioPosition = distanceToMax < amplitude ? distanceToMin / amplitude : 0.0;
 		} else {
-			Common::Point mouse = _vm->_cursor->getPosition(false);
+			Common::Point mouse = _vm->_cursor->getPosition();
 			mouse = _vm->_scene->scalePoint(mouse);
 			int16 amplitude;
 			int16 pixelPosition;
@@ -1845,14 +1846,14 @@ void Script::leverDragXY(Context &c, const Opcode &cmd) {
 	uint16 maxLeverPosition = cmd.args[3];
 	uint16 script = _vm->_state->valueOrVarValue(cmd.args[4]);
 
-	Common::Point mouseInit = _vm->_cursor->getPosition(false);
+	Common::Point mouseInit = _vm->_cursor->getPosition();
 	mouseInit = _vm->_scene->scalePoint(mouseInit);
 
 	_vm->_cursor->changeCursor(2);
 
 	bool mousePressed = true;
 	do {
-		Common::Point mouse = _vm->_cursor->getPosition(false);
+		Common::Point mouse = _vm->_cursor->getPosition();
 		mouse = _vm->_scene->scalePoint(mouse);
 		int16 distanceX = (mouseInit.x - mouse.x) / scale;
 		int16 distanceY = (mouseInit.y - mouse.y) / scale;
@@ -1908,7 +1909,7 @@ void Script::runScriptWhileDragging(Context &c, const Opcode &cmd) {
 
 		if (!dragWithDirectionKeys) {
 			// Distance between the mouse and the lever
-			Common::Point mouse = _vm->_cursor->getPosition(false);
+			Common::Point mouse = _vm->_cursor->getPosition();
 			mouse = _vm->_scene->scalePoint(mouse);
 			int16 distanceX = mouse.x - leverWidth / 2 - _vm->_state->getVar(cmd.args[0]);
 			int16 distanceY = mouse.y - leverHeight / 2 - _vm->_state->getVar(cmd.args[1]);
@@ -1927,7 +1928,7 @@ void Script::runScriptWhileDragging(Context &c, const Opcode &cmd) {
 					_vm->_state->setVar(cmd.args[4], i);
 					_vm->runScriptsFromNode(script);
 
-					mouse = _vm->_cursor->getPosition(false);
+					mouse = _vm->_cursor->getPosition();
 					mouse = _vm->_scene->scalePoint(mouse);
 					distanceX = mouse.x - leverWidth / 2 - _vm->_state->getVar(cmd.args[0]);
 					distanceY = mouse.y - leverHeight / 2 - _vm->_state->getVar(cmd.args[1]);

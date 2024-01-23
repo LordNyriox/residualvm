@@ -7,24 +7,24 @@ MODULE_OBJS := \
 	cursor.o \
 	database.o \
 	detection.o \
-	directoryentry.o \
-	directorysubentry.o \
 	effects.o \
 	gfx.o \
 	gfx_opengl.o \
-	gfx_tinygl.o \
 	gfx_opengl_shaders.o \
 	gfx_opengl_texture.o \
+	gfx_tinygl.o \
 	gfx_tinygl_texture.o \
 	hotspot.o \
 	inventory.o \
+	lzo.o \
 	menu.o \
 	movie.o \
 	myst3.o \
 	node.o \
-	nodecube.o \
-	nodeframe.o \
+	node_opengl_shaders.o \
+	node_software.o \
 	puzzles.o \
+	resource_loader.o \
 	scene.o \
 	script.o \
 	sound.o \

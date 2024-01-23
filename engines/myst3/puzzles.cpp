@@ -22,9 +22,11 @@
 
 #include "engines/myst3/puzzles.h"
 #include "engines/myst3/ambient.h"
+#include "engines/myst3/database.h"
 #include "engines/myst3/menu.h"
 #include "engines/myst3/myst3.h"
 #include "engines/myst3/node.h"
+#include "engines/myst3/resource_loader.h"
 #include "engines/myst3/state.h"
 #include "engines/myst3/sound.h"
 
@@ -909,8 +911,8 @@ void Puzzles::pinball(int16 var) {
 		if (rightSideFrame < 500)
 			rightSideFrame += 300;
 
-		int32 crashedLeftFrame = ((((leftSideFrame + 25) / 50) >> 4) & 1) != 0 ? 550 : 500;
-		int32 crashedRightFrame = ((((rightSideFrame + 25) / 50) >> 4) & 1) != 0 ? 550 : 500;
+		int32 crashedLeftFrame  = (((leftSideFrame  + 25) / 50) & 1) != 0 ? 550 : 500;
+		int32 crashedRightFrame = (((rightSideFrame + 25) / 50) & 1) != 0 ? 550 : 500;
 
 		while (1) {
 			bool moviePlaying = false;
@@ -972,7 +974,7 @@ void Puzzles::pinball(int16 var) {
 
 			if (!moviePlaying) {
 				_vm->_state->setVar(26, jumpType);
-				_vm->_state->setVar(93, 1);
+				_vm->_state->setWaterEffectRunning(true);
 				_vm->_sound->stopEffect(1025, 7);
 				return;
 			}
@@ -1140,34 +1142,29 @@ void Puzzles::journalSaavedro(int16 move) {
 
 		// Does the left page need to be loaded from a different node?
 		if (nodeLeft != nodeRight) {
-			const DirectorySubEntry *jpegDesc = _vm->getFileDescription("", nodeLeft, 0, DirectorySubEntry::kFrame);
-
-			if (!jpegDesc)
-				error("Frame %d does not exist", nodeLeft);
-
-			Graphics::Surface *bitmap = Myst3Engine::decodeJpeg(jpegDesc);
-
-			// Copy the left half of the node to a new surface
-			Graphics::Surface *leftBitmap = new Graphics::Surface();
-			leftBitmap->create(bitmap->w / 2, bitmap->h, Texture::getRGBAPixelFormat());
-
-			for (uint i = 0; i < bitmap->h; i++) {
-				memcpy(leftBitmap->getBasePtr(0, i),
-						bitmap->getBasePtr(0, i),
-						leftBitmap->w * 4);
-			}
-
-			bitmap->free();
-			delete bitmap;
+			ResourceDescription resource = _vm->_resourceLoader->getFrameBitmap("JRNL", nodeLeft);
 
 			// Create a spotitem covering the left half of the screen
 			// to display the left page
-			SpotItemFace *leftPage = _vm->addMenuSpotItem(999, 1, Common::Rect(0, 0, leftBitmap->w, leftBitmap->h));
+			Common::Rect leftFrameHalf(Renderer::kOriginalWidth / 2, Renderer::kFrameHeight);
+			_vm->addMenuSpotItem(999, 1, leftFrameHalf);
 
-			leftPage->updateData(leftBitmap);
+			if (resource.type() == Archive::kModdedFrame) {
+				TextureLoader textureLoader(*_vm->_gfx);
+				Texture *leftPageTexture = textureLoader.load(resource, TextureLoader::kImageFormatJPEG);
 
-			leftBitmap->free();
-			delete leftBitmap;
+				_vm->_nodeRenderer->updateSpotItemTexture(999, leftPageTexture, FloatRect(0.f, 0.f, 0.5f, 1.f));
+
+			} else {
+				Graphics::Surface leftNodeBitmap = Myst3Engine::decodeJpeg(resource);
+
+				Common::Rect leftRect(leftNodeBitmap.w / 2, leftNodeBitmap.h);
+				const Graphics::Surface leftArea = leftNodeBitmap.getSubArea(leftRect);
+
+				_vm->_nodeRenderer->updateSpotItemBitmap(999, leftArea);
+
+				leftNodeBitmap.free();
+			}
 		}
 	}
 }
@@ -1182,12 +1179,12 @@ int16 Puzzles::_journalSaavedroLastPageLastChapterValue() {
 }
 
 uint16 Puzzles::_journalSaavedroGetNode(uint16 chapter) {
-	const DirectorySubEntry *desc = _vm->getFileDescription("", 1200, 0, DirectorySubEntry::kNumMetadata);
+	ResourceDescription desc = _vm->_resourceLoader->getFileDescription("JRNL", 1200, 0, Archive::kNumMetadata);
 
-	if (!desc)
+	if (!desc.isValid())
 		error("Node 1200 does not exist");
 
-	return desc->getMiscData(chapter) + 199;
+	return desc.miscData(chapter) + 199;
 }
 
 uint16 Puzzles::_journalSaavedroPageCount(uint16 chapter) {
@@ -1216,13 +1213,14 @@ uint16 Puzzles::_journalSaavedroNextChapter(uint16 chapter, bool forward) {
 void Puzzles::journalAtrus(uint16 node, uint16 var) {
 	uint numPages = 0;
 
-	while (_vm->getFileDescription("", node++, 0, DirectorySubEntry::kFrame))
+	Common::String room = _vm->_db->getRoomName(_vm->_state->getLocationRoom(), _vm->_state->getLocationAge());
+	while (_vm->_resourceLoader->getFileDescription(room, node++, 0, Archive::kFrame).isValid())
 		numPages++;
 
 	_vm->_state->setVar(var, numPages - 1);
 }
 
-void Puzzles::symbolCodesInit(uint16 var, uint16 posX, uint16 posY) {
+void Puzzles::symbolCodesInit(uint16 var, int16 posX, int16 posY) {
 	struct Point {
 		uint16 x;
 		uint16 y;
@@ -1525,16 +1523,19 @@ void Puzzles::projectorLoadBitmap(uint16 bitmap) {
 	_vm->_projectorBackground = new Graphics::Surface();
 	_vm->_projectorBackground->create(1024, 1024, Texture::getRGBAPixelFormat());
 
-	const DirectorySubEntry *movieDesc = _vm->getFileDescription("", bitmap, 0, DirectorySubEntry::kStillMovie);
+	ResourceDescription movieDesc = _vm->_resourceLoader->getFileDescription("LEOS", bitmap, 0, Archive::kStillMovie);
 
-	if (!movieDesc)
+	if (!movieDesc.isValid())
 		error("Movie %d does not exist", bitmap);
 
 	// Rebuild the complete background image from the frames of the bink movie
-	Common::MemoryReadStream *movieStream = movieDesc->getData();
+	Common::SeekableReadStream *movieStream = movieDesc.createReadStream();
 	Video::BinkDecoder bink;
 	bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
-	bink.loadStream(movieStream);
+	if (!bink.loadStream(movieStream)) {
+		error("Invalid Bink video file '%s-%d'", "LEOS", bitmap);
+	}
+
 	bink.start();
 
 	for (uint i = 0; i < 1024; i += 256) {
@@ -1552,16 +1553,19 @@ void Puzzles::projectorAddSpotItem(uint16 bitmap, uint16 x, uint16 y) {
 	if (!_vm->_state->getVar(26))
 		return;
 
-	const DirectorySubEntry *movieDesc = _vm->getFileDescription("", bitmap, 0, DirectorySubEntry::kStillMovie);
+	ResourceDescription movieDesc = _vm->_resourceLoader->getFileDescription("LEOS", bitmap, 0, Archive::kStillMovie);
 
-	if (!movieDesc)
+	if (!movieDesc.isValid())
 		error("Movie %d does not exist", bitmap);
 
 	// Rebuild the complete background image from the frames of the bink movie
-	Common::MemoryReadStream *movieStream = movieDesc->getData();
+	Common::SeekableReadStream *movieStream = movieDesc.createReadStream();
 	Video::BinkDecoder bink;
 	bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
-	bink.loadStream(movieStream);
+	if (!bink.loadStream(movieStream)) {
+		error("Invalid Bink video file '%s-%d'", "LEOS", bitmap);
+	}
+
 	bink.start();
 
 	const Graphics::Surface *frame = bink.decodeNextFrame();

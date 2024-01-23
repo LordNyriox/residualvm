@@ -185,15 +185,26 @@ static const Myst3GameDescription gameDescriptions[] = {
 };
 
 #define GAMEOPTION_WIDESCREEN_MOD GUIO_GAMEOPTIONS1
+#define GAMEOPTION_ASSETS_MOD     GUIO_GAMEOPTIONS2
+
 
 static const ADExtraGuiOptionsMap optionsList[] = {
 	{
 		GAMEOPTION_WIDESCREEN_MOD,
 		{
 			_s("Widescreen mod"),
-			_s("Enable enable widescreen rendering in fullscreen mode."),
+			_s("Enable widescreen rendering in fullscreen mode."),
 			"widescreen_mod",
 			false
+		}
+	},
+	{
+		GAMEOPTION_ASSETS_MOD,
+		{
+			_s("Load modded assets"),
+			_s("Enable loading of external replacement assets."),
+			"enable_assets_mod",
+			true
 		}
 	},
 
@@ -203,7 +214,7 @@ static const ADExtraGuiOptionsMap optionsList[] = {
 class Myst3MetaEngine : public AdvancedMetaEngine {
 public:
 	Myst3MetaEngine() : AdvancedMetaEngine(gameDescriptions, sizeof(Myst3GameDescription), myst3Games, optionsList) {
-		_guiOptions = GUIO5(GUIO_NOMIDI, GUIO_NOSFX, GUIO_NOSPEECH, GUIO_NOSUBTITLES, GAMEOPTION_WIDESCREEN_MOD);
+		_guiOptions = GUIO6(GUIO_NOMIDI, GUIO_NOSFX, GUIO_NOSPEECH, GUIO_NOSUBTITLES, GAMEOPTION_WIDESCREEN_MOD, GAMEOPTION_ASSETS_MOD);
 		_maxScanDepth = 3;
 		_directoryGlobs = directoryGlobs;
 	}

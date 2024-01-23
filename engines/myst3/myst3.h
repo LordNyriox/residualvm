@@ -25,12 +25,14 @@
 
 #include "engines/engine.h"
 
+#include "engines/myst3/archive.h"
+
 #include "common/array.h"
 #include "common/ptr.h"
 #include "common/system.h"
 #include "common/random.h"
 
-#include "engines/myst3/directorysubentry.h"
+#include "graphics/renderer.h"
 
 namespace Graphics {
 struct Surface;
@@ -41,14 +43,6 @@ struct Event;
 }
 
 namespace Myst3 {
-
-// Engine Debug Flags
-enum {
-	kDebugVariable = (1 << 0),
-	kDebugSaveLoad = (1 << 1),
-	kDebugNode     = (1 << 2),
-	kDebugScript   = (1 << 3)
-};
 
 enum TransitionType {
 	kTransitionFade = 1,
@@ -65,19 +59,24 @@ class GameState;
 class HotSpot;
 class Cursor;
 class Inventory;
+class Layout;
 class Database;
 class Scene;
 class Script;
-class SpotItemFace;
+class Subtitles;
 class SunSpot;
 class Renderer;
 class Menu;
 class Node;
+class NodeRenderer;
 class Sound;
+class Texture;
 class Ambient;
+class ResourceLoader;
 class ScriptedMovie;
 class ShakeEffect;
 class RotationEffect;
+class TextRenderer;
 class Transition;
 class FrameLimiter;
 struct NodeData;
@@ -104,6 +103,10 @@ public:
 	Database *_db;
 	Sound *_sound;
 	Ambient *_ambient;
+	Layout *_layout;
+	NodeRenderer *_nodeRenderer;
+	TextRenderer *_textRenderer;
+	ResourceLoader *_resourceLoader;
 	
 	Common::RandomSource *_rnd;
 
@@ -119,6 +122,7 @@ public:
 	uint32 getGameLocalizationType() const;
 	bool isTextLanguageEnglish() const;
 	bool isWideScreenModEnabled() const;
+	bool isAssetsModEnabled() const;
 
 	bool canSaveGameStateCurrently() override;
 	bool canLoadGameStateCurrently() override;
@@ -128,13 +132,7 @@ public:
 	Common::Error saveGameState(int slot, const Common::String &desc) override;
 	Common::Error saveGameState(const Common::String &desc, const Graphics::Surface *thumbnail);
 
-	const DirectorySubEntry *getFileDescription(const Common::String &room, uint32 index, uint16 face,
-	                                            DirectorySubEntry::ResourceType type);
-	DirectorySubEntryList listFilesMatching(const Common::String &room, uint32 index, uint16 face,
-	                                        DirectorySubEntry::ResourceType type);
-
-	Graphics::Surface *loadTexture(uint16 id);
-	static Graphics::Surface *decodeJpeg(const DirectorySubEntry *jpegDesc);
+	static Graphics::Surface decodeJpeg(const ResourceDescription &jpegDesc);
 
 	void goToNode(uint16 nodeID, TransitionType transition);
 	void loadNode(uint16 nodeID, uint32 roomID = 0, uint32 ageID = 0);
@@ -164,8 +162,9 @@ public:
 	void setMovieLooping(uint16 id, bool loop);
 
 	void addSpotItem(uint16 id, int16 condition, bool fade);
-	SpotItemFace *addMenuSpotItem(uint16 id, int16 condition, const Common::Rect &rect);
+	void addMenuSpotItem(uint16 id, int16 condition, const Common::Rect &rect);
 	void loadNodeSubtitles(uint32 id);
+	bool hasNodeSubtitlesToDraw();
 
 	void addSunSpot(uint16 pitch, uint16 heading, uint16 intensity,
 			uint16 color, uint16 var, bool varControlledIntensity, uint16 radius);
@@ -198,9 +197,7 @@ private:
 	const Myst3GameDescription *_gameDescription;
 
 	Node *_node;
-
-	Common::Array<Archive *> _archivesCommon;
-	Archive *_archiveNode;
+	Subtitles *_nodeSubtitles;
 
 	Script *_scriptEngine;
 
@@ -244,9 +241,9 @@ private:
 
 	bool checkDatafiles();
 
-	bool addArchive(const Common::String &file, bool mandatory);
-	void openArchives();
-	void closeArchives();
+	ResourceLoader *openArchives();
+	Graphics::RendererType selectRenderer() const;
+	Renderer *createRenderer();
 
 	bool isInventoryVisible();
 

@@ -125,6 +125,7 @@ protected:
 	OpenGL::SurfaceRenderer *_surfaceRenderer;
 
 	void initializeOpenGLContext() const;
+	void loadOpenGLFunctions() const;
 	void drawOverlay();
 	void drawSideTextures();
 	void closeOverlay();

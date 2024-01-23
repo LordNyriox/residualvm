@@ -33,6 +33,7 @@
 #include "graphics/pixelbuffer.h"
 #include "graphics/opengl/context.h"
 #include "graphics/opengl/framebuffer.h"
+#include "graphics/opengl/functions.h"
 #include "graphics/opengl/surfacerenderer.h"
 #include "graphics/opengl/system_headers.h"
 #include "graphics/opengl/texture.h"
@@ -167,9 +168,6 @@ void OpenGLSdlGraphicsManager::setupScreen(uint gameWidth, uint gameHeight, bool
 	debug("INFO: OpenGL Double Buffer: %d", glflag);
 	SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &glflag);
 	debug("INFO: OpenGL Stencil buffer bits: %d", glflag);
-#ifdef USE_GLEW
-	debug("INFO: GLEW Version: %s", glewGetString(GLEW_VERSION));
-#endif
 #ifdef USE_OPENGL_SHADERS
 	debug("INFO: GLSL version: %s", glGetString(GL_SHADING_LANGUAGE_VERSION));
 #endif
@@ -201,14 +199,6 @@ void OpenGLSdlGraphicsManager::createOrUpdateScreen() {
 		warning("SDL Error: %s", SDL_GetError());
 		g_system->quit();
 	}
-
-#ifdef USE_GLEW
-	GLenum err = glewInit();
-	if (err != GLEW_OK) {
-		warning("Error: %s", glewGetErrorString(err));
-		g_system->quit();
-	}
-#endif
 
 #if SDL_VERSION_ATLEAST(2, 0, 1)
 	int obtainedWidth = 0, obtainedHeight = 0;
@@ -299,6 +289,8 @@ Graphics::PixelBuffer OpenGLSdlGraphicsManager::getScreenPixelBuffer() {
 }
 
 void OpenGLSdlGraphicsManager::initializeOpenGLContext() const {
+	loadOpenGLFunctions();
+
 	OpenGL::ContextType type;
 
 #ifdef USE_GLES2
@@ -314,6 +306,27 @@ void OpenGLSdlGraphicsManager::initializeOpenGLContext() const {
 		warning("Unable to %s VSync: %s", _vsync ? "enable" : "disable", SDL_GetError());
 	}
 #endif
+}
+
+void OpenGLSdlGraphicsManager::loadOpenGLFunctions() const {
+#ifndef USE_GLES2
+
+// Load all the functions in functions-list.h
+#define GL_FUNC(name, type) \
+	name = (type) SDL_GL_GetProcAddress(#name);
+
+// Shut clang's "cast between pointer-to-function and pointer-to-object is an extension" warnings up.
+// See https://github.com/libsdl-org/SDL/issues/2866
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+
+#include "graphics/opengl/functions-list.h"
+
+#pragma GCC diagnostic pop
+
+#undef GL_FUNC
+
+#endif // USE_GLES2
 }
 
 OpenGLSdlGraphicsManager::OpenGLPixelFormat::OpenGLPixelFormat(uint screenBytesPerPixel, uint red, uint blue, uint green, uint alpha, int samples) :

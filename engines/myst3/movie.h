@@ -23,6 +23,7 @@
 #ifndef MOVIE_H_
 #define MOVIE_H_
 
+#include "engines/myst3/archive.h"
 #include "engines/myst3/gfx.h"
 #include "engines/myst3/node.h"
 
@@ -31,14 +32,13 @@
 
 namespace Myst3 {
 
-struct VideoData;
 class Myst3Engine;
 class Texture;
 class Subtitles;
 
 class Movie : public Drawable {
 public:
-	Movie(Myst3Engine *vm, uint16 id);
+	Movie(Myst3Engine *vm, const Common::String &room, uint16 id);
 	virtual ~Movie();
 
 	virtual void draw() override;
@@ -49,8 +49,10 @@ public:
 
 	uint16 getId() { return _id; }
 	bool isVideoLoaded() {return _bink.isVideoLoaded(); }
-	void setPosU(int32 v) { _posU = v; }
+	void setPosU(int32 u) { _posU = u; }
 	void setPosV(int32 v) { _posV = v; }
+	void setPosWidth(int32 width) { _posWidth = width; }
+	void setPosHeight(int32 height) { _posHeight = height; }
 	void setForce2d(bool b);
 	void setForceOpaque(bool b) { _forceOpaque = b; }
 	void setStartFrame(int32 v);
@@ -68,10 +70,14 @@ protected:
 	Math::Vector3d _pBottomRight;
 	Math::Vector3d _pTopRight;
 
+	bool _is3d;
 	bool _force2d;
 	bool _forceOpaque;
+	Archive::ResourceType _resourceType;
 	int32 _posU;
 	int32 _posV;
+	int32 _posWidth;
+	int32 _posHeight;
 
 	Video::BinkDecoder _bink;
 	Texture *_texture;
@@ -85,7 +91,7 @@ protected:
 	int32 _transparency;
 
 	int32 adjustFrameForRate(int32 frame, bool dataToBink);
-	void loadPosition(const VideoData &videoData);
+	void loadPosition(const ResourceDescription::VideoData &videoData);
 	void drawNextFrameToTexture();
 
 	void draw2d();
@@ -94,7 +100,7 @@ protected:
 
 class ScriptedMovie : public Movie {
 public:
-	ScriptedMovie(Myst3Engine *vm, uint16 id);
+	ScriptedMovie(Myst3Engine *vm, const Common::String &room, uint16 id);
 	virtual ~ScriptedMovie();
 
 	void draw() override;
@@ -151,7 +157,7 @@ protected:
 
 class SimpleMovie : public Movie {
 public:
-	SimpleMovie(Myst3Engine *vm, uint16 id);
+	SimpleMovie(Myst3Engine *vm, const Common::String &room, uint16 id);
 	virtual ~SimpleMovie();
 
 	void update();
@@ -172,7 +178,7 @@ private:
 // Used by the projectors on J'nanin, see puzzle #14
 class ProjectorMovie : public ScriptedMovie {
 public:
-	ProjectorMovie(Myst3Engine *vm, uint16 id, Graphics::Surface *background);
+	ProjectorMovie(Myst3Engine *vm, const Common::String &room, uint16 id, Graphics::Surface *background);
 	virtual ~ProjectorMovie();
 
 	void update();

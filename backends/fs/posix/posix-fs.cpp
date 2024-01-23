@@ -52,6 +52,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#ifdef __linux__
+#include <libgen.h>
+#endif
+
 #ifdef __OS2__
 #define INCL_DOS
 #include <os2.h>
@@ -88,6 +92,19 @@ POSIXFilesystemNode::POSIXFilesystemNode(const Common::String &p) {
 		_displayName = p;
 		return;
 	}
+#endif
+#ifdef __linux__
+	if (p.hasPrefix("$ORIGIN")) {
+		char binaryPath[PATH_MAX];
+		ssize_t len;
+		if ((len = readlink("/proc/self/exe", binaryPath, sizeof(binaryPath) - 1)) != -1) {
+			binaryPath[len] = '\0';
+			char *binaryDir = dirname(binaryPath);
+
+			_path = binaryDir;
+			_path += p.c_str() + 7;
+		}
+	} else
 #endif
 
 	// Expand "~/" to the value of the HOME env variable

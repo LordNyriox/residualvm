@@ -26,6 +26,7 @@
 #include "engines/myst3/menu.h"
 #include "engines/myst3/myst3.h"
 #include "engines/myst3/node.h"
+#include "engines/myst3/resource_loader.h"
 #include "engines/myst3/scene.h"
 #include "engines/myst3/sound.h"
 #include "engines/myst3/state.h"
@@ -40,63 +41,71 @@ namespace Myst3 {
 
 Dialog::Dialog(Myst3Engine *vm, uint id):
 	_vm(vm),
-	_texture(0) {
-	// Draw on the whole screen
-	_isConstrainedToWindow = false;
-	_scaled = !_vm->isWideScreenModEnabled();
+	_texture(nullptr) {
 
-	const DirectorySubEntry *countDesc = _vm->getFileDescription("DLGI", id, 0, DirectorySubEntry::kNumMetadata);
-	const DirectorySubEntry *movieDesc = _vm->getFileDescription("DLOG", id, 0, DirectorySubEntry::kDialogMovie);
-	if (!movieDesc) {
-		movieDesc = _vm->getFileDescription("DLOG", id, 0, DirectorySubEntry::kStillMovie);
-	}
+	ResourceDescription countDesc = _vm->_resourceLoader->getFileDescription("DLGI", id, 0, Archive::kNumMetadata);
+	ResourceDescription movieDesc = _vm->_resourceLoader->getDialogMovie("DLOG", id);
 
-	if (!movieDesc || !countDesc)
+	if (!movieDesc.isValid() || !countDesc.isValid())
 		error("Unable to load dialog %d", id);
 
 	// Retrieve button count
-	_buttonCount = countDesc->getMiscData(0);
+	_buttonCount = countDesc.miscData(0);
 	assert(_buttonCount <= 3);
 
-	// Load the movie
-	Common::MemoryReadStream *movieStream = movieDesc->getData();
+	// Load the video
+	VideoLoader videoLoader;
+	Common::SeekableReadStream *movieStream = videoLoader.load(movieDesc);
+	assert(movieStream);
+
 	_bink.setDefaultHighColorFormat(Texture::getRGBAPixelFormat());
-	_bink.loadStream(movieStream);
+	if (!_bink.loadStream(movieStream)) {
+		error("Invalid Bink video file '%s-%d'", "DLOG", id);
+	}
+
 	_bink.start();
 
 	const Graphics::Surface *frame = _bink.decodeNextFrame();
-	_texture = _vm->_gfx->createTexture(frame);
+	_texture = _vm->_gfx->createTexture(*frame);
+
+	if (movieDesc.type() == Archive::kModdedMovie) {
+		// For modded resources, the screen size is that from the original file
+		 ResourceDescription::VideoData videoData = movieDesc.videoData();
+		_screenSize = FloatSize(videoData.width, videoData.height);
+	} else {
+		_screenSize = _texture->size();
+	}
 
 	_vm->_sound->playEffect(699, 10);
 }
 
 Dialog::~Dialog() {
-	_vm->_gfx->freeTexture(_texture);
+	delete _texture;
 }
 
 void Dialog::draw() {
-	Common::Rect textureRect = Common::Rect(_texture->width, _texture->height);
-	_vm->_gfx->drawTexturedRect2D(getPosition(), textureRect, _texture);
+	FloatRect screenRect = _vm->_layout->unconstrainedViewport();
+
+	FloatRect position = getPosition()
+	        .normalize(screenRect.size());
+
+	_vm->_gfx->setViewport(screenRect, false);
+	_vm->_gfx->drawTexturedRect2D(position, FloatRect::unit(), *_texture);
 }
 
-Common::Rect Dialog::getPosition() const {
-	Common::Rect viewport;
-	if (_scaled) {
-		viewport = Common::Rect(Renderer::kOriginalWidth, Renderer::kOriginalHeight);
-	} else {
-		viewport = _vm->_gfx->viewport();
-	}
+FloatRect Dialog::getPosition() const {
+	FloatRect screenRect = _vm->_layout->unconstrainedViewport();
+	float scale = _vm->_layout->scale();
 
-	Common::Rect screenRect = Common::Rect(_texture->width, _texture->height);
-	screenRect.translate((viewport.width() - _texture->width) / 2,
-			(viewport.height() - _texture->height) / 2);
-	return screenRect;
+	return _screenSize
+	        .scale(scale)
+	        .centerIn(screenRect);
 }
 
 ButtonsDialog::ButtonsDialog(Myst3Engine *vm, uint id):
 	Dialog(vm, id),
-	_frameToDisplay(0),
-	_previousframe(0) {
+	_previousframe(0),
+	_frameToDisplay(0) {
 
 	loadButtons();
 }
@@ -105,16 +114,16 @@ ButtonsDialog::~ButtonsDialog() {
 }
 
 void ButtonsDialog::loadButtons() {
-	const DirectorySubEntry *buttonsDesc = _vm->getFileDescription("DLGB", 1000, 0, DirectorySubEntry::kNumMetadata);
+	ResourceDescription buttonsDesc = _vm->_resourceLoader->getFileDescription("DLGB", 1000, 0, Archive::kNumMetadata);
 
-	if (!buttonsDesc)
+	if (!buttonsDesc.isValid())
 		error("Unable to load dialog buttons description");
 
 	for (uint i = 0; i < 3; i++) {
-		uint32 left = buttonsDesc->getMiscData(i * 4);
-		uint32 top = buttonsDesc->getMiscData(i * 4 + 1);
-		uint32 width = buttonsDesc->getMiscData(i * 4 + 2);
-		uint32 height = buttonsDesc->getMiscData(i * 4 + 3);
+		uint32 left = buttonsDesc.miscData(i * 4);
+		uint32 top = buttonsDesc.miscData(i * 4 + 1);
+		uint32 width = buttonsDesc.miscData(i * 4 + 2);
+		uint32 height = buttonsDesc.miscData(i * 4 + 3);
 		_buttons[i] = Common::Rect(width, height);
 		_buttons[i].translate(left, top);
 	}
@@ -125,7 +134,7 @@ void ButtonsDialog::draw() {
 		_bink.seekToFrame(_frameToDisplay);
 
 		const Graphics::Surface *frame = _bink.decodeNextFrame();
-		_texture->update(frame);
+		_texture->update(*frame);
 
 		_previousframe = _frameToDisplay;
 	}
@@ -143,13 +152,18 @@ int16 ButtonsDialog::update() {
 			// Compute local mouse coordinates
 			_vm->_cursor->updatePosition(event.mouse);
 			Common::Point localMouse = getRelativeMousePosition();
+			float scale = _vm->_layout->scale();
 
 			// No hovered button
 			_frameToDisplay = 0;
 
 			// Display the frame corresponding to the hovered button
 			for (uint i = 0; i < _buttonCount; i++) {
-				if (_buttons[i].contains(localMouse)) {
+				Common::Rect button = _buttons[i];
+				FloatRect buttonRect = FloatRect(button.left, button.top, button.right, button.bottom)
+				        .scale(scale);
+
+				if (buttonRect.contains(FloatPoint(localMouse.x, localMouse.y))) {
 					_frameToDisplay = i + 1;
 					break;
 				}
@@ -174,10 +188,10 @@ int16 ButtonsDialog::update() {
 }
 
 Common::Point ButtonsDialog::getRelativeMousePosition() const {
-	Common::Rect position = getPosition();
-	Common::Point localMouse =_vm->_cursor->getPosition(_scaled);
-	localMouse.x -= position.left;
-	localMouse.y -= position.top;
+	FloatRect position = getPosition();
+	Common::Point localMouse =_vm->_cursor->getPosition();
+	localMouse.x -= position.left();
+	localMouse.y -= position.top();
 	return localMouse;
 }
 
@@ -219,8 +233,7 @@ int16 GamepadDialog::update() {
 }
 
 Menu::Menu(Myst3Engine *vm) :
-		_vm(vm),
-		_saveLoadSpotItem(0) {
+		_vm(vm) {
 }
 
 Menu::~Menu() {
@@ -307,7 +320,8 @@ void Menu::updateMainMenu(uint16 action) {
 }
 
 Graphics::Surface *Menu::captureThumbnail() {
-	Graphics::Surface *big = _vm->_gfx->getScreenshot();
+	Common::Rect screenViewport = _vm->_layout->screenViewportInt();
+	Graphics::Surface *big = _vm->_gfx->getScreenshot(screenViewport);
 	Graphics::Surface *thumbnail = createThumbnail(big);
 	big->free();
 	delete big;
@@ -409,12 +423,12 @@ Common::String Menu::getAgeLabel(GameState *gameState) {
 		age = gameState->getLocationAge();
 
 	// Look for the age name
-	const DirectorySubEntry *desc = _vm->getFileDescription("AGES", 1000, 0, DirectorySubEntry::kTextMetadata);
+	ResourceDescription desc = _vm->_resourceLoader->getFileDescription("AGES", 1000, 0, Archive::kTextMetadata);
 
-	if (!desc)
+	if (!desc.isValid())
 		error("Unable to load age descriptions.");
 
-	Common::String label = desc->getTextData(_vm->_db->getAgeLabelId(age));
+	Common::String label = desc.textData(_vm->_db->getAgeLabelId(age));
 	label.toUppercase();
 
 	return label;
@@ -427,8 +441,9 @@ Graphics::Surface *Menu::createThumbnail(Graphics::Surface *big) {
 	small->create(GameState::kThumbnailWidth, GameState::kThumbnailHeight, Texture::getRGBAPixelFormat());
 
 	// The portion of the screenshot to keep
-	Common::Rect frame = _vm->_scene->getPosition();
-	Graphics::Surface frameSurface = big->getSubArea(frame);
+	FloatRect frame = _vm->_layout->frameViewport();
+	Common::Rect frameRect(frame.left(), frame.top(), frame.right(), frame.bottom());
+	Graphics::Surface frameSurface = big->getSubArea(frameRect);
 
 	uint32 *dst = (uint32 *)small->getPixels();
 	for (uint i = 0; i < small->h; i++) {
@@ -443,12 +458,6 @@ Graphics::Surface *Menu::createThumbnail(Graphics::Surface *big) {
 	}
 
 	return small;
-}
-
-void Menu::setSaveLoadSpotItem(uint16 id, SpotItemFace *spotItem) {
-	if (id == 1) {
-		_saveLoadSpotItem = spotItem;
-	}
 }
 
 bool Menu::isOpen() const {
@@ -569,12 +578,10 @@ void PagingMenu::loadMenuSelect(uint16 item) {
 	_saveLoadAgeName = getAgeLabel(&gameState);
 
 	// Update the save thumbnail
-	if (_saveLoadSpotItem) {
-		Graphics::Surface *thumbnail = GameState::readThumbnail(saveFile);
-		_saveLoadSpotItem->updateData(thumbnail);
-		thumbnail->free();
-		delete thumbnail;
-	}
+	Graphics::Surface *thumbnail = GameState::readThumbnail(saveFile);
+	_vm->_nodeRenderer->updateSpotItemBitmap(1, *thumbnail);
+	thumbnail->free();
+	delete thumbnail;
 
 	delete saveFile;
 }
@@ -603,8 +610,9 @@ void PagingMenu::saveMenuOpen() {
 	saveLoadUpdateVars();
 
 	// Update the thumbnail to display
-	if (_saveLoadSpotItem && _saveThumbnail)
-		_saveLoadSpotItem->updateData(_saveThumbnail.get());
+	if (_saveThumbnail) {
+		_vm->_nodeRenderer->updateSpotItemBitmap(1, *_saveThumbnail.get());
+	}
 }
 
 void PagingMenu::saveMenuSelect(uint16 item) {
@@ -678,8 +686,8 @@ void PagingMenu::saveLoadErase() {
 	saveLoadUpdateVars();
 
 	// Load menu specific
-	if (node == kNodeMenuLoadGame && _saveLoadSpotItem) {
-		_saveLoadSpotItem->clear();
+	if (node == kNodeMenuLoadGame) {
+		_vm->_nodeRenderer->clearSpotItemBitmap(1);
 		_saveLoadAgeName.clear();
 	}
 
@@ -708,12 +716,12 @@ void PagingMenu::draw() {
 		PolarRect rect = nodeData->hotspots[i + 1].rects[0];
 
 		Common::String display = prepareSaveNameForDisplay(_saveLoadFiles[itemToDisplay]);
-		_vm->_gfx->draw2DText(display, Common::Point(rect.centerPitch, rect.centerHeading));
+		_vm->_textRenderer->draw2DText(display, Common::Point(rect.centerPitch, rect.centerHeading));
 	}
 
 	if (!_saveLoadAgeName.empty()) {
 		PolarRect rect = nodeData->hotspots[8].rects[0];
-		_vm->_gfx->draw2DText(_saveLoadAgeName, Common::Point(rect.centerPitch, rect.centerHeading));
+		_vm->_textRenderer->draw2DText(_saveLoadAgeName, Common::Point(rect.centerPitch, rect.centerHeading));
 	}
 
 	// Save screen specific
@@ -734,7 +742,7 @@ void PagingMenu::draw() {
 		}
 
 		PolarRect rect = nodeData->hotspots[9].rects[0];
-		_vm->_gfx->draw2DText(display, Common::Point(rect.centerPitch, rect.centerHeading));
+		_vm->_textRenderer->draw2DText(display, Common::Point(rect.centerPitch, rect.centerHeading));
 	}
 }
 
@@ -811,12 +819,12 @@ void AlbumMenu::draw() {
 
 	if (!_saveLoadAgeName.empty()) {
 		Common::Point p(184 - (13 * _saveLoadAgeName.size()) / 2, 305);
-		_vm->_gfx->draw2DText(_saveLoadAgeName, p);
+		_vm->_textRenderer->draw2DText(_saveLoadAgeName, p);
 	}
 
 	if (!_saveLoadTime.empty()) {
 		Common::Point p(184 - (13 * _saveLoadTime.size()) / 2, 323);
-		_vm->_gfx->draw2DText(_saveLoadTime, p);
+		_vm->_textRenderer->draw2DText(_saveLoadTime, p);
 	}
 }
 
@@ -850,8 +858,8 @@ void AlbumMenu::saveLoadAction(uint16 action, uint16 item) {
 }
 
 Common::String AlbumMenu::getSaveNameTemplate() {
-	const DirectorySubEntry *saveNameDesc = _vm->getFileDescription("SAVE", 1000, 0, DirectorySubEntry::kTextMetadata);
-	return saveNameDesc->getTextData(0); // "EXILE Saved Game %d"
+	ResourceDescription saveNameDesc = _vm->_resourceLoader->getFileDescription("SAVE", 1000, 0, Archive::kTextMetadata);
+	return saveNameDesc.textData(0); // "EXILE Saved Game %d"
 }
 
 Common::HashMap<int, Common::String> AlbumMenu::listSaveFiles() {
@@ -891,19 +899,17 @@ void AlbumMenu::loadSaves() {
 		GameState::StateData data;
 		data.syncWithSaveGame(s);
 
-		if (_albumSpotItems.contains(i)) {
-			// Read and resize the thumbnail
-			Graphics::Surface *saveThumb = GameState::readThumbnail(saveFile);
-			Graphics::Surface *miniThumb = GameState::resizeThumbnail(saveThumb, kAlbumThumbnailWidth, kAlbumThumbnailHeight);
-			saveThumb->free();
-			delete saveThumb;
+		// Read and resize the thumbnail
+		Graphics::Surface *saveThumb = GameState::readThumbnail(saveFile);
+		Graphics::Surface *miniThumb = GameState::resizeThumbnail(saveThumb, kAlbumThumbnailWidth, kAlbumThumbnailHeight);
+		saveThumb->free();
+		delete saveThumb;
 
-			SpotItemFace *spotItem = _albumSpotItems.getVal(i);
-			spotItem->updateData(miniThumb);
+		uint spotItemId = 100 * i + 2;
+		_vm->_nodeRenderer->updateSpotItemBitmap(spotItemId, *miniThumb);
 
-			miniThumb->free();
-			delete miniThumb;
-		}
+		miniThumb->free();
+		delete miniThumb;
 
 		delete saveFile;
 	}
@@ -931,7 +937,7 @@ void AlbumMenu::loadMenuSelect() {
 		// No save in the selected slot
 		_saveLoadAgeName = "";
 		_saveLoadTime = "";
-		_saveLoadSpotItem->initBlack(GameState::kThumbnailWidth, GameState::kThumbnailHeight);
+		_vm->_nodeRenderer->clearSpotItemBitmap(1);
 		return;
 	}
 
@@ -951,12 +957,10 @@ void AlbumMenu::loadMenuSelect() {
 	_saveLoadTime = gameState->formatSaveTime();
 
 	// Update the save thumbnail
-	if (_saveLoadSpotItem) {
-		Graphics::Surface *thumbnail = GameState::readThumbnail(saveFile);
-		_saveLoadSpotItem->updateData(thumbnail);
-		thumbnail->free();
-		delete thumbnail;
-	}
+	Graphics::Surface *thumbnail = GameState::readThumbnail(saveFile);
+	_vm->_nodeRenderer->updateSpotItemBitmap(1, *thumbnail);
+	thumbnail->free();
+	delete thumbnail;
 
 	delete gameState;
 }
@@ -983,8 +987,9 @@ void AlbumMenu::saveMenuOpen() {
 	_saveLoadTime = "";
 
 	// Update the thumbnail to display
-	if (_saveLoadSpotItem && _saveThumbnail)
-		_saveLoadSpotItem->updateData(_saveThumbnail.get());
+	if (_saveThumbnail) {
+		_vm->_nodeRenderer->updateSpotItemBitmap(1, *_saveThumbnail.get());
+	}
 }
 
 void AlbumMenu::saveMenuSave() {
@@ -1012,14 +1017,6 @@ void AlbumMenu::saveMenuSave() {
 void AlbumMenu::setSavesAvailable() {
 	Common::HashMap<int, Common::String> saveFiles = listSaveFiles();
 	_vm->_state->setMenuSavesAvailable(!saveFiles.empty());
-}
-
-void AlbumMenu::setSaveLoadSpotItem(uint16 id, SpotItemFace *spotItem) {
-	if (id % 100 == 2) {
-		_albumSpotItems.setVal(id / 100, spotItem);
-	} else {
-		Menu::setSaveLoadSpotItem(id, spotItem);
-	}
 }
 
 } // End of namespace Myst3
